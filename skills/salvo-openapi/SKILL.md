@@ -13,7 +13,7 @@ Add dependencies:
 
 ```toml
 [dependencies]
-salvo = { version = "0.76", features = ["oapi"] }
+salvo = { version = "0.88", features = ["oapi"] }
 ```
 
 ## Basic Usage

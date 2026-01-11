@@ -13,7 +13,7 @@ This skill helps implement authentication and authorization in Salvo application
 
 ```toml
 [dependencies]
-salvo = { version = "0.76", features = ["jwt-auth"] }
+salvo = { version = "0.88", features = ["jwt-auth"] }
 jsonwebtoken = "9"
 ```
 
@@ -108,7 +108,7 @@ async fn protected_handler(depot: &mut Depot) -> String {
 
 ```toml
 [dependencies]
-salvo = { version = "0.76", features = ["basic-auth"] }
+salvo = { version = "0.88", features = ["basic-auth"] }
 ```
 
 ### Basic Auth Middleware
