@@ -56,7 +56,7 @@ async fn show_user(req: &mut Request) -> String {
 #[tokio::test]
 async fn test_show_user() {
     let router = Router::new()
-        .push(Router::with_path("users/<id>").get(show_user));
+        .push(Router::with_path("users/{id}").get(show_user));
     let service = Service::new(router);
 
     let content = TestClient::get("http://127.0.0.1:8080/users/123")
@@ -258,7 +258,7 @@ async fn may_fail(req: &mut Request) -> Result<String, StatusError> {
 #[tokio::test]
 async fn test_error_handling() {
     let router = Router::new()
-        .push(Router::with_path("<id>").get(may_fail));
+        .push(Router::with_path("{id}").get(may_fail));
     let service = Service::new(router);
 
     let res = TestClient::get("http://127.0.0.1:8080/0")

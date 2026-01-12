@@ -20,7 +20,8 @@ jsonwebtoken = "9"
 ### JWT Middleware
 
 ```rust
-use salvo::jwt_auth::{JwtAuth, JwtClaims};
+use salvo::prelude::*;
+use salvo::jwt_auth::{JwtAuth, JwtAuthState, HeaderFinder, QueryFinder};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,7 +32,7 @@ struct Claims {
 
 #[tokio::main]
 async fn main() {
-    let auth_handler = JwtAuth::new("secret_key")
+    let auth_handler: JwtAuth<Claims, _> = JwtAuth::new("secret_key".to_owned())
         .finders(vec![
             Box::new(HeaderFinder::new()),
             Box::new(QueryFinder::new("token")),
@@ -114,6 +115,7 @@ salvo = { version = "0.88", features = ["basic-auth"] }
 ### Basic Auth Middleware
 
 ```rust
+use salvo::prelude::*;
 use salvo::basic_auth::{BasicAuth, BasicAuthValidator};
 
 struct MyValidator;
@@ -215,19 +217,31 @@ async fn profile(depot: &mut Depot) -> Result<String, StatusError> {
 ## Role-Based Authorization
 
 ```rust
-#[derive(Clone)]
+use std::sync::Arc;
+
+#[derive(Clone, PartialEq)]
 enum Role {
     Admin,
     User,
 }
 
-#[handler]
-fn require_role(required: Role) -> impl Handler {
-    move |depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl| async move {
+struct RequireRole {
+    required: Role,
+}
+
+impl RequireRole {
+    fn new(role: Role) -> Self {
+        Self { required: role }
+    }
+}
+
+#[async_trait]
+impl Handler for RequireRole {
+    async fn handle(&self, req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
         let user_role = depot.get::<Role>("user_role");
 
         match user_role {
-            Some(role) if matches!((role, &required), (Role::Admin, _) | (Role::User, Role::User)) => {
+            Some(role) if *role == Role::Admin || *role == self.required => {
                 ctrl.call_next(req, depot, res).await;
             }
             _ => {
@@ -243,7 +257,7 @@ let router = Router::new()
     .push(
         Router::with_path("admin")
             .hoop(auth_middleware)
-            .hoop(require_role(Role::Admin))
+            .hoop(RequireRole::new(Role::Admin))
             .get(admin_handler)
     );
 ```

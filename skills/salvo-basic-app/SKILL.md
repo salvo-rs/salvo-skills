@@ -97,7 +97,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-salvo = "0.76"
+salvo = "0.88"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 

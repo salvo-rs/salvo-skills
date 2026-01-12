@@ -20,8 +20,9 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ### Connection Pool
 
 ```rust
+use salvo::prelude::*;
+use salvo::affix_state;
 use sqlx::PgPool;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
@@ -30,18 +31,11 @@ async fn main() {
         .expect("Failed to connect to database");
 
     let router = Router::new()
-        .hoop(add_pool(pool))
+        .hoop(affix_state::inject(pool))
         .get(list_users);
 
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
-}
-
-#[handler]
-fn add_pool(pool: PgPool) -> impl Handler {
-    move |depot: &mut Depot| {
-        depot.inject(pool.clone());
-    }
 }
 ```
 
@@ -98,6 +92,8 @@ sea-orm = { version = "0.12", features = ["sqlx-postgres", "runtime-tokio-native
 ### Connection
 
 ```rust
+use salvo::prelude::*;
+use salvo::affix_state;
 use sea_orm::{Database, DatabaseConnection};
 
 #[tokio::main]
@@ -107,18 +103,11 @@ async fn main() {
         .expect("Failed to connect");
 
     let router = Router::new()
-        .hoop(add_db(db))
+        .hoop(affix_state::inject(db))
         .get(list_users);
 
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
-}
-
-#[handler]
-fn add_db(db: DatabaseConnection) -> impl Handler {
-    move |depot: &mut Depot| {
-        depot.inject(db.clone());
-    }
 }
 ```
 
@@ -143,6 +132,7 @@ async fn list_users(depot: &mut Depot) -> Json<Vec<user::Model>> {
 
 #[handler]
 async fn show_user(id: PathParam<i64>, depot: &mut Depot) -> Result<Json<user::Model>, StatusError> {
+    // Route: Router::with_path("users/{id}").get(show_user)
     let db = depot.obtain::<DatabaseConnection>().unwrap();
 
     let user = user::Entity::find_by_id(id.into_inner())
@@ -183,6 +173,8 @@ diesel = { version = "2.1", features = ["postgres", "r2d2"] }
 ### Connection Pool
 
 ```rust
+use salvo::prelude::*;
+use salvo::affix_state;
 use diesel::r2d2::{self, ConnectionManager};
 use diesel::PgConnection;
 
@@ -196,18 +188,11 @@ async fn main() {
         .expect("Failed to create pool");
 
     let router = Router::new()
-        .hoop(add_pool(pool))
+        .hoop(affix_state::inject(pool))
         .get(list_users);
 
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
-}
-
-#[handler]
-fn add_pool(pool: DbPool) -> impl Handler {
-    move |depot: &mut Depot| {
-        depot.inject(pool.clone());
-    }
 }
 ```
 
