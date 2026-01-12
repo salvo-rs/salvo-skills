@@ -136,7 +136,7 @@ Stop execution and return response:
 
 ```rust
 #[handler]
-async fn validate_input(req: &mut Request, res: &mut Response, ctrl: &mut FlowCtrl) {
+async fn validate_input(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
     if !is_valid_request(req) {
         res.status_code(StatusCode::BAD_REQUEST);
         res.render("Invalid request");

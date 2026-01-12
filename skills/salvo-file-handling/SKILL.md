@@ -137,7 +137,7 @@ use salvo::serve_static::StaticDir;
 async fn main() {
     let router = Router::new()
         .push(
-            Router::with_path("static/<**path>")
+            Router::with_path("static/{**path}")
                 .get(StaticDir::new("public"))
         );
 
@@ -151,7 +151,7 @@ async fn main() {
 ```rust
 let router = Router::new()
     .push(
-        Router::with_path("files/<**path>")
+        Router::with_path("files/{**path}")
             .get(StaticDir::new("uploads").listing(true))
     );
 ```
@@ -170,7 +170,7 @@ struct Assets;
 async fn main() {
     let router = Router::new()
         .push(
-            Router::with_path("assets/<**path>")
+            Router::with_path("assets/{**path}")
                 .get(static_embed::<Assets>())
         );
 

@@ -144,7 +144,7 @@ use salvo::oapi::{OpenApi, Info, License};
 async fn main() {
     let router = Router::new()
         .push(Router::with_path("users").get(list_users).post(create_user))
-        .push(Router::with_path("users/<id>").get(show_user));
+        .push(Router::with_path("users/{id}").get(show_user));
 
     let doc = OpenApi::new("My API", "1.0.0")
         .info(

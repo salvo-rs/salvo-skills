@@ -17,16 +17,16 @@ Router::with_path("users").get(list_users)
 ### Path Parameters
 ```rust
 // Basic parameter
-Router::with_path("users/<id>").get(show_user)
+Router::with_path("users/{id}").get(show_user)
 
 // Typed parameter (num, i32, i64, etc.)
-Router::with_path("users/<id:num>").get(show_user)
+Router::with_path("users/{id:num}").get(show_user)
 
 // Regex pattern
-Router::with_path("users/<id|[0-9]+>").get(show_user)
+Router::with_path(r"users/{id|\d+}").get(show_user)
 
 // Wildcard (captures rest of path)
-Router::with_path("files/<**path>").get(serve_file)
+Router::with_path("files/{**path}").get(serve_file)
 ```
 
 Accessing parameters:
@@ -50,7 +50,7 @@ let router = Router::new()
                     .get(list_users)
                     .post(create_user)
                     .push(
-                        Router::with_path("<id>")
+                        Router::with_path("{id}")
                             .get(show_user)
                             .patch(update_user)
                             .delete(delete_user)
@@ -67,11 +67,8 @@ let router = Router::new()
 ### Flat Structure
 ```rust
 let router = Router::new()
-    .get("api/v1/users", list_users)
-    .post("api/v1/users", create_user)
-    .get("api/v1/users/<id>", show_user)
-    .patch("api/v1/users/<id>", update_user)
-    .delete("api/v1/users/<id>", delete_user);
+    .push(Router::with_path("api/v1/users").get(list_users).post(create_user))
+    .push(Router::with_path("api/v1/users/{id}").get(show_user).patch(update_user).delete(delete_user));
 ```
 
 ## HTTP Methods
@@ -92,16 +89,16 @@ Router::new()
 Routers use filters for matching:
 
 ```rust
-use salvo::routing::filter;
+use salvo::routing::filters;
 
 // Path filter
-Router::with_filter(filter::path("users"))
+Router::with_filter(filters::path("users"))
 
 // Method filter
-Router::with_filter(filter::get())
+Router::with_filter(filters::get())
 
 // Combined filters
-Router::with_filter(filter::path("users").and(filter::get()))
+Router::with_filter(filters::path("users").and(filters::get()))
 ```
 
 ## Router Groups
