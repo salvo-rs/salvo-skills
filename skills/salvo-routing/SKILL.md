@@ -26,7 +26,7 @@ Router::with_path("users").get(list_users)
 
 ### Path Parameters
 
-Salvo supports two syntaxes for path parameters: `{id}` and `<id>`.
+Salvo uses `{id}` syntax for path parameters (since version 0.76). Earlier versions used `<id>` syntax, which is now deprecated.
 
 ```rust
 // Basic parameter
@@ -54,14 +54,14 @@ async fn show_user(req: &mut Request) -> String {
 
 ## Wildcard Types
 
-Salvo supports multiple wildcard patterns:
+Salvo supports multiple wildcard patterns (using `{}` syntax since version 0.76; earlier versions used `<>` syntax):
 
-1. **`{*}` or `<*>`**: Matches any single path segment
+1. **`{*}`**: Matches any single path segment
    ```rust
    Router::new().path("{*}").get(catch_all)
    ```
 
-2. **`{**}` or `<**>`**: Matches all remaining path segments (including slashes)
+2. **`{**}`**: Matches all remaining path segments (including slashes)
    ```rust
    Router::new().path("static/{**path}").get(serve_static)
    // Matches: static/css/style.css, static/js/main.js, etc.
