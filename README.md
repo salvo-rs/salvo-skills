@@ -21,7 +21,7 @@ AI agent skills for the [Salvo](https://salvo.rs) web framework. These skills he
 
 Agent Skills are specialized knowledge modules that AI assistants can load to perform specific tasks. They follow the [Agent Skills](https://agentskills.io) open standard and work with tools like GitHub Copilot, Claude Code, and other AI coding assistants.
 
-## Available Skills
+## Available Skills (17 Total)
 
 ### Core Framework
 
@@ -30,6 +30,7 @@ Agent Skills are specialized knowledge modules that AI assistants can load to pe
 | [salvo-basic-app](./skills/salvo-basic-app) | Create basic Salvo applications with handlers, routers, and server setup |
 | [salvo-routing](./skills/salvo-routing) | Configure routers with path parameters, nested routes, and filters |
 | [salvo-middleware](./skills/salvo-middleware) | Implement middleware for authentication, logging, CORS, and request processing |
+| [salvo-error-handling](./skills/salvo-error-handling) | Handle errors gracefully with custom error types and error pages |
 
 ### Data Handling
 
@@ -38,14 +39,25 @@ Agent Skills are specialized knowledge modules that AI assistants can load to pe
 | [salvo-data-extraction](./skills/salvo-data-extraction) | Extract and validate data from requests (JSON, forms, query params, path params) |
 | [salvo-database](./skills/salvo-database) | Integrate databases using SQLx, Diesel, SeaORM, or other ORMs |
 | [salvo-file-handling](./skills/salvo-file-handling) | Handle file uploads, downloads, and serve static files |
+| [salvo-caching](./skills/salvo-caching) | Implement caching strategies for improved performance |
+
+### Security
+
+| Skill | Description |
+|-------|-------------|
+| [salvo-auth](./skills/salvo-auth) | Implement authentication and authorization (JWT, Basic Auth, sessions) |
+| [salvo-cors](./skills/salvo-cors) | Configure CORS and security headers for browser access |
+| [salvo-rate-limiter](./skills/salvo-rate-limiter) | Implement rate limiting to protect APIs from abuse |
+| [salvo-tls-acme](./skills/salvo-tls-acme) | Configure TLS/HTTPS with automatic certificate management |
 
 ### Advanced Features
 
 | Skill | Description |
 |-------|-------------|
 | [salvo-openapi](./skills/salvo-openapi) | Generate OpenAPI documentation automatically from handlers |
-| [salvo-auth](./skills/salvo-auth) | Implement authentication and authorization (JWT, Basic Auth, sessions) |
 | [salvo-realtime](./skills/salvo-realtime) | Implement WebSocket and Server-Sent Events for real-time features |
+| [salvo-compression](./skills/salvo-compression) | Compress HTTP responses using gzip, brotli, or zstd |
+| [salvo-proxy](./skills/salvo-proxy) | Implement reverse proxy for load balancing and API gateways |
 | [salvo-testing](./skills/salvo-testing) | Write unit and integration tests using TestClient |
 
 ## Quick Start
@@ -84,6 +96,9 @@ Once installed, you can ask your AI assistant questions like:
 - "How do I extract JSON data from a POST request in Salvo?"
 - "Set up a WebSocket chat handler in Salvo"
 - "Generate OpenAPI documentation for my Salvo endpoints"
+- "Configure CORS for my API"
+- "Add rate limiting to protect my endpoints"
+- "Set up HTTPS with Let's Encrypt"
 
 The AI will use these skills to provide accurate, framework-specific guidance.
 
@@ -112,11 +127,18 @@ The AI will use these skills to provide accurate, framework-specific guidance.
 - `depot.obtain::<T>()` for retrieving state
 - SQLx, SeaORM, Diesel support
 
-### Authentication
+### Authentication & Security
 - JWT with `JwtAuth` middleware
 - Basic Auth with `BasicAuthValidator`
 - Session-based auth with `SessionHandler`
 - Role-based access control (RBAC)
+- CORS configuration
+- Rate limiting
+
+### Performance
+- Response compression (gzip, brotli, zstd)
+- Caching strategies
+- HTTP/2 and HTTP/3 support
 
 ### OpenAPI
 - `#[endpoint]` macro for documentation
