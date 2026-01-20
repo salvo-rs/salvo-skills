@@ -7,14 +7,27 @@ description: Configure Salvo routers with path parameters, nested routes, and fi
 
 This skill helps configure advanced routing patterns in Salvo applications.
 
+## Salvo Routing Innovation
+
+Salvo's routing system has unique features:
+
+1. **Path as Filter**: Path matching is essentially a filter, allowing unified combination with method and custom conditions
+2. **Reusable Routes**: Routers can be added to multiple locations for flexible composition
+3. **Unified Middleware Model**: Middleware and handlers share the same concept via `hoop()` method
+4. **Flexible Nesting**: Use `push()` for arbitrary depth hierarchical structures
+
 ## Path Patterns
 
 ### Static Paths
+
 ```rust
 Router::with_path("users").get(list_users)
 ```
 
 ### Path Parameters
+
+Salvo supports two syntaxes for path parameters: `{id}` and `<id>`.
+
 ```rust
 // Basic parameter
 Router::with_path("users/{id}").get(show_user)
@@ -29,7 +42,8 @@ Router::with_path(r"users/{id|\d+}").get(show_user)
 Router::with_path("files/{**path}").get(serve_file)
 ```
 
-Accessing parameters:
+### Accessing Parameters
+
 ```rust
 #[handler]
 async fn show_user(req: &mut Request) -> String {
@@ -38,9 +52,31 @@ async fn show_user(req: &mut Request) -> String {
 }
 ```
 
+## Wildcard Types
+
+Salvo supports multiple wildcard patterns:
+
+1. **`{*}` or `<*>`**: Matches any single path segment
+   ```rust
+   Router::new().path("{*}").get(catch_all)
+   ```
+
+2. **`{**}` or `<**>`**: Matches all remaining path segments (including slashes)
+   ```rust
+   Router::new().path("static/{**path}").get(serve_static)
+   // Matches: static/css/style.css, static/js/main.js, etc.
+   ```
+
+3. **Named wildcards**: Can retrieve matched content in handler
+   ```rust
+   Router::new().path("files/{*rest}").get(handler)
+   // In handler: req.param::<String>("rest")
+   ```
+
 ## Nested Routers
 
 ### Tree Structure
+
 ```rust
 let router = Router::new()
     .push(
@@ -64,8 +100,35 @@ let router = Router::new()
     );
 ```
 
-### Flat Structure
+### Route Composition
+
 ```rust
+fn user_routes() -> Router {
+    Router::with_path("users")
+        .get(list_users)
+        .post(create_user)
+        .push(
+            Router::with_path("{id}")
+                .get(get_user)
+                .patch(update_user)
+                .delete(delete_user)
+        )
+}
+
+fn post_routes() -> Router {
+    Router::with_path("posts")
+        .get(list_posts)
+        .post(create_post)
+}
+
+let api_v1 = Router::with_path("v1")
+    .push(user_routes())
+    .push(post_routes());
+
+let api_v2 = Router::with_path("v2")
+    .push(user_routes())
+    .push(post_routes());
+
 let router = Router::new()
     .push(Router::with_path("api/v1/users").get(list_users).post(create_user))
     .push(Router::with_path("api/v1/users/{id}").get(show_user).patch(update_user).delete(delete_user));
@@ -84,9 +147,13 @@ Router::new()
     .options(handler); // OPTIONS
 ```
 
-## Filters
+## Path Matching Behavior
 
-Routers use filters for matching:
+When a request arrives, routing works as follows:
+
+1. **Filter Matching**: First attempts to match route filters (path, method, etc.)
+2. **Match Failed**: If no filter matches, that route's middleware and handler are skipped
+3. **Match Success**: If matched, executes middleware and handler in order
 
 ```rust
 use salvo::routing::filters;
@@ -101,27 +168,87 @@ Router::with_filter(filters::get())
 Router::with_filter(filters::path("users").and(filters::get()))
 ```
 
-## Router Groups
+## Middleware with Routes
 
-Share common path prefix:
+Use `hoop()` to add middleware to routes:
 
 ```rust
-let api_v1 = Router::with_path("api/v1");
-let users = Router::with_path("users")
-    .get(list_users)
-    .post(create_user);
-let posts = Router::with_path("posts")
-    .get(list_posts);
+let router = Router::new()
+    .hoop(logging)  // Applies to all routes
+    .path("api")
+    .push(
+        Router::new()
+            .hoop(auth_check)  // Only applies to routes under this
+            .path("users")
+            .get(list_users)
+            .post(create_user)
+    );
+```
+
+## HTTP Redirects
+
+```rust
+use salvo::prelude::*;
+use salvo::writing::Redirect;
+
+// Permanent redirect (301)
+#[handler]
+async fn permanent_redirect(res: &mut Response) {
+    res.render(Redirect::permanent("/new-location"));
+}
+
+// Temporary redirect (302)
+#[handler]
+async fn temporary_redirect(res: &mut Response) {
+    res.render(Redirect::found("/temporary-location"));
+}
+
+// See Other (303)
+#[handler]
+async fn see_other(res: &mut Response) {
+    res.render(Redirect::see_other("/another-page"));
+}
+```
+
+## Custom Route Filters
+
+Create custom filters for complex matching logic:
+
+```rust
+use salvo::prelude::*;
+use salvo::routing::filter::Filter;
+use uuid::Uuid;
+
+pub struct GuidFilter;
+
+impl Filter for GuidFilter {
+    fn filter(&self, req: &mut Request, _state: &mut PathState) -> bool {
+        if let Some(param) = req.param::<String>("id") {
+            Uuid::parse_str(&param).is_ok()
+        } else {
+            false
+        }
+    }
+}
+
+#[handler]
+async fn get_user_by_guid(req: &mut Request) -> String {
+    let id = req.param::<Uuid>("id").unwrap();
+    format!("User GUID: {}", id)
+}
 
 let router = Router::new()
-    .push(api_v1.push(users).push(posts));
+    .path("users/{id}")
+    .filter(GuidFilter)
+    .get(get_user_by_guid);
 ```
 
 ## Best Practices
 
 1. Use tree structure for complex APIs
-2. Use flat structure for simple routes
-3. Type path parameters when possible (`<id:num>`)
+2. Use route composition functions for reusability
+3. Use regex constraints for path parameters when needed (`{id:/\d+/}`)
 4. Group related routes under common paths
 5. Use descriptive parameter names
-6. Prefer nested routers over long path strings
+6. Apply middleware at the appropriate route level
+7. Prefer `{id}` syntax for consistency

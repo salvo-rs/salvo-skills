@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(for dir in \"D:\\\\Works\\\\salvo-rs\\\\salvo-skills\\\\skills\"*)",
+      "Bash(done)"
+    ]
+  }
+}

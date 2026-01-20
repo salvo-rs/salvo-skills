@@ -13,11 +13,13 @@ This skill helps integrate databases with Salvo applications.
 
 ```toml
 [dependencies]
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "macros"] }
+salvo = "0.76"
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+serde = { version = "1", features = ["derive"] }
 ```
 
-### Connection Pool
+### Connection Pool with Depot Injection
 
 ```rust
 use salvo::prelude::*;
@@ -42,7 +44,8 @@ async fn main() {
 ### Query Handlers
 
 ```rust
-use sqlx::FromRow;
+use salvo::prelude::*;
+use sqlx::{FromRow, PgPool};
 use serde::Serialize;
 
 #[derive(FromRow, Serialize)]
@@ -53,20 +56,22 @@ struct User {
 }
 
 #[handler]
-async fn list_users(depot: &mut Depot) -> Json<Vec<User>> {
-    let pool = depot.obtain::<PgPool>().unwrap();
+async fn list_users(depot: &mut Depot) -> Result<Json<Vec<User>>, StatusError> {
+    let pool = depot.obtain::<PgPool>()
+        .ok_or_else(|| StatusError::internal_server_error())?;
 
     let users = sqlx::query_as::<_, User>("SELECT id, name, email FROM users")
         .fetch_all(pool)
         .await
-        .unwrap();
+        .map_err(|_| StatusError::internal_server_error())?;
 
-    Json(users)
+    Ok(Json(users))
 }
 
 #[handler]
-async fn create_user(body: JsonBody<CreateUser>, depot: &mut Depot) -> StatusCode {
-    let pool = depot.obtain::<PgPool>().unwrap();
+async fn create_user(body: JsonBody<CreateUser>, depot: &mut Depot) -> Result<StatusCode, StatusError> {
+    let pool = depot.obtain::<PgPool>()
+        .ok_or_else(|| StatusError::internal_server_error())?;
     let user = body.into_inner();
 
     sqlx::query("INSERT INTO users (name, email) VALUES ($1, $2)")
@@ -74,9 +79,26 @@ async fn create_user(body: JsonBody<CreateUser>, depot: &mut Depot) -> StatusCod
         .bind(&user.email)
         .execute(pool)
         .await
-        .unwrap();
+        .map_err(|_| StatusError::internal_server_error())?;
 
-    StatusCode::CREATED
+    Ok(StatusCode::CREATED)
+}
+
+#[handler]
+async fn get_user(req: &mut Request, depot: &mut Depot) -> Result<Json<User>, StatusError> {
+    let pool = depot.obtain::<PgPool>()
+        .ok_or_else(|| StatusError::internal_server_error())?;
+    let id = req.param::<i64>("id")
+        .ok_or_else(|| StatusError::bad_request())?;
+
+    let user = sqlx::query_as::<_, User>("SELECT id, name, email FROM users WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| StatusError::internal_server_error())?
+        .ok_or_else(|| StatusError::not_found())?;
+
+    Ok(Json(user))
 }
 ```
 
@@ -86,10 +108,12 @@ async fn create_user(body: JsonBody<CreateUser>, depot: &mut Depot) -> StatusCod
 
 ```toml
 [dependencies]
-sea-orm = { version = "0.12", features = ["sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
+salvo = "0.76"
+sea-orm = { version = "1.0", features = ["sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
-### Connection
+### Connection with Depot Injection
 
 ```rust
 use salvo::prelude::*;
@@ -114,20 +138,22 @@ async fn main() {
 ### Entity Operations
 
 ```rust
+use salvo::prelude::*;
 use sea_orm::*;
 
-// Assuming you have generated entities with sea-orm-cli
+// Assuming entities are generated with sea-orm-cli
 
 #[handler]
-async fn list_users(depot: &mut Depot) -> Json<Vec<user::Model>> {
-    let db = depot.obtain::<DatabaseConnection>().unwrap();
+async fn list_users(depot: &mut Depot) -> Result<Json<Vec<user::Model>>, StatusError> {
+    let db = depot.obtain::<DatabaseConnection>()
+        .ok_or_else(|| StatusError::internal_server_error())?;
 
     let users = user::Entity::find()
         .all(db)
         .await
-        .unwrap();
+        .map_err(|_| StatusError::internal_server_error())?;
 
-    Json(users)
+    Ok(Json(users))
 }
 
 #[handler]
@@ -135,18 +161,19 @@ async fn show_user(id: PathParam<i64>, depot: &mut Depot) -> Result<Json<user::M
     // Route: Router::with_path("users/{id}").get(show_user)
     let db = depot.obtain::<DatabaseConnection>().unwrap();
 
-    let user = user::Entity::find_by_id(id.into_inner())
+    let user = user::Entity::find_by_id(id)
         .one(db)
         .await
-        .unwrap()
+        .map_err(|_| StatusError::internal_server_error())?
         .ok_or_else(|| StatusError::not_found())?;
 
     Ok(Json(user))
 }
 
 #[handler]
-async fn create_user(body: JsonBody<CreateUser>, depot: &mut Depot) -> StatusCode {
-    let db = depot.obtain::<DatabaseConnection>().unwrap();
+async fn create_user(body: JsonBody<CreateUser>, depot: &mut Depot) -> Result<StatusCode, StatusError> {
+    let db = depot.obtain::<DatabaseConnection>()
+        .ok_or_else(|| StatusError::internal_server_error())?;
     let data = body.into_inner();
 
     let user = user::ActiveModel {
@@ -155,9 +182,10 @@ async fn create_user(body: JsonBody<CreateUser>, depot: &mut Depot) -> StatusCod
         ..Default::default()
     };
 
-    user.insert(db).await.unwrap();
+    user.insert(db).await
+        .map_err(|_| StatusError::internal_server_error())?;
 
-    StatusCode::CREATED
+    Ok(StatusCode::CREATED)
 }
 ```
 
@@ -167,10 +195,12 @@ async fn create_user(body: JsonBody<CreateUser>, depot: &mut Depot) -> StatusCod
 
 ```toml
 [dependencies]
-diesel = { version = "2.1", features = ["postgres", "r2d2"] }
+salvo = "0.76"
+diesel = { version = "2.2", features = ["postgres", "r2d2"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
-### Connection Pool
+### Connection Pool with Depot Injection
 
 ```rust
 use salvo::prelude::*;
@@ -196,45 +226,28 @@ async fn main() {
 }
 ```
 
-### Query Handlers
+### Query Handlers (with spawn_blocking)
 
 ```rust
+use salvo::prelude::*;
 use diesel::prelude::*;
 
 #[handler]
-async fn list_users(depot: &mut Depot) -> Json<Vec<User>> {
-    let pool = depot.obtain::<DbPool>().unwrap();
-    let mut conn = pool.get().unwrap();
+async fn list_users(depot: &mut Depot) -> Result<Json<Vec<User>>, StatusError> {
+    let pool = depot.obtain::<DbPool>()
+        .ok_or_else(|| StatusError::internal_server_error())?
+        .clone();
 
     let users = tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|_| ())?;
         use crate::schema::users::dsl::*;
-        users.load::<User>(&mut conn)
+        users.load::<User>(&mut conn).map_err(|_| ())
     })
     .await
-    .unwrap()
-    .unwrap();
+    .map_err(|_| StatusError::internal_server_error())?
+    .map_err(|_| StatusError::internal_server_error())?;
 
-    Json(users)
-}
-```
-
-## Error Handling
-
-```rust
-use salvo::http::StatusError;
-
-#[handler]
-async fn get_user(id: PathParam<i64>, depot: &mut Depot) -> Result<Json<User>, StatusError> {
-    let pool = depot.obtain::<PgPool>().unwrap();
-
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
-        .bind(id.into_inner())
-        .fetch_optional(pool)
-        .await
-        .map_err(|_| StatusError::internal_server_error())?
-        .ok_or_else(|| StatusError::not_found())?;
-
-    Ok(Json(user))
+    Ok(Json(users))
 }
 ```
 
@@ -243,7 +256,8 @@ async fn get_user(id: PathParam<i64>, depot: &mut Depot) -> Result<Json<User>, S
 ```rust
 #[handler]
 async fn transfer_funds(body: JsonBody<Transfer>, depot: &mut Depot) -> Result<StatusCode, StatusError> {
-    let pool = depot.obtain::<PgPool>().unwrap();
+    let pool = depot.obtain::<PgPool>()
+        .ok_or_else(|| StatusError::internal_server_error())?;
     let transfer = body.into_inner();
 
     let mut tx = pool.begin().await
@@ -270,13 +284,83 @@ async fn transfer_funds(body: JsonBody<Transfer>, depot: &mut Depot) -> Result<S
 }
 ```
 
+## Complete Example
+
+```rust
+use salvo::prelude::*;
+use sqlx::{FromRow, PgPool};
+use serde::{Deserialize, Serialize};
+
+#[derive(FromRow, Serialize)]
+struct User {
+    id: i64,
+    name: String,
+    email: String,
+}
+
+#[derive(Deserialize)]
+struct CreateUser {
+    name: String,
+    email: String,
+}
+
+#[handler]
+async fn list_users(depot: &mut Depot) -> Result<Json<Vec<User>>, StatusError> {
+    let pool = depot.obtain::<PgPool>()
+        .ok_or_else(|| StatusError::internal_server_error())?;
+
+    let users = sqlx::query_as::<_, User>("SELECT id, name, email FROM users")
+        .fetch_all(pool)
+        .await
+        .map_err(|_| StatusError::internal_server_error())?;
+
+    Ok(Json(users))
+}
+
+#[handler]
+async fn create_user(body: JsonBody<CreateUser>, depot: &mut Depot) -> Result<StatusCode, StatusError> {
+    let pool = depot.obtain::<PgPool>()
+        .ok_or_else(|| StatusError::internal_server_error())?;
+    let user = body.into_inner();
+
+    sqlx::query("INSERT INTO users (name, email) VALUES ($1, $2)")
+        .bind(&user.name)
+        .bind(&user.email)
+        .execute(pool)
+        .await
+        .map_err(|_| StatusError::internal_server_error())?;
+
+    Ok(StatusCode::CREATED)
+}
+
+#[tokio::main]
+async fn main() {
+    let pool = PgPool::connect("postgres://user:pass@localhost/db")
+        .await
+        .expect("Failed to connect");
+
+    let router = Router::new()
+        .hoop(affix_state::inject(pool))
+        .push(
+            Router::with_path("users")
+                .get(list_users)
+                .post(create_user)
+        );
+
+    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
+    Server::new(acceptor).serve(router).await;
+}
+```
+
 ## Best Practices
 
-1. Use connection pooling for performance
-2. Store pool/connection in Depot via middleware
-3. Use `spawn_blocking` for sync database operations
-4. Handle database errors gracefully
+1. Use `affix_state::inject()` for dependency injection
+2. Use `depot.obtain::<T>()` to retrieve injected state
+3. Use `spawn_blocking` for sync database operations (Diesel)
+4. Handle database errors gracefully with proper error conversion
 5. Use transactions for multi-step operations
 6. Validate input before database operations
 7. Use prepared statements to prevent SQL injection
 8. Consider using migrations for schema management
+9. Use connection pooling for performance
+10. Keep database operations in dedicated handler functions

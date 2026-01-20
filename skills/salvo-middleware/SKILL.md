@@ -5,7 +5,7 @@ description: Implement middleware for authentication, logging, CORS, and request
 
 # Salvo Middleware
 
-This skill helps implement middleware in Salvo applications. In Salvo, middleware is just a handler with flow control.
+This skill helps implement middleware in Salvo applications. In Salvo, middleware is just a handler with flow control - the same concept applies to both.
 
 ## Basic Middleware Pattern
 
@@ -48,9 +48,50 @@ let router = Router::new()
     .get(public_handler);  // No auth check
 ```
 
+## Middleware Scopes
+
+### Global Middleware
+
+```rust
+let router = Router::new()
+    .hoop(global_middleware)  // Applies to all routes
+    .push(Router::with_path("/api").get(api_handler))
+    .push(Router::with_path("/admin").get(admin_handler));
+```
+
+### Route-Level Middleware
+
+```rust
+let router = Router::new()
+    .push(
+        Router::with_path("/api")
+            .hoop(api_middleware)  // Only applies to /api
+            .get(api_handler)
+    )
+    .push(Router::with_path("/admin").get(admin_handler));
+```
+
+### Combined Usage
+
+```rust
+let router = Router::new()
+    .hoop(logger)  // Global logging
+    .push(
+        Router::with_path("/api")
+            .hoop(auth_middleware)  // API authentication
+            .hoop(rate_limiter)     // API rate limiting
+            .get(api_handler)
+    )
+    .push(
+        Router::with_path("/public")
+            .get(public_handler)  // No auth required
+    );
+```
+
 ## Common Middleware Patterns
 
 ### Authentication
+
 ```rust
 #[handler]
 async fn auth_check(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
@@ -70,7 +111,8 @@ async fn auth_check(req: &mut Request, depot: &mut Depot, res: &mut Response, ct
 }
 ```
 
-### Request Logging
+### Request Logging with Timing
+
 ```rust
 #[handler]
 async fn request_logger(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
@@ -86,13 +128,25 @@ async fn request_logger(req: &mut Request, depot: &mut Depot, res: &mut Response
 }
 ```
 
+### Add Custom Response Header
+
+```rust
+#[handler]
+async fn add_custom_header(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
+    res.headers_mut().insert("X-Custom-Header", "Salvo".parse().unwrap());
+    ctrl.call_next(req, depot, res).await;
+}
+```
+
 ### CORS
+
 ```rust
 use salvo::cors::Cors;
+use salvo::http::Method;
 
 let cors = Cors::new()
     .allow_origin("https://example.com")
-    .allow_methods(vec!["GET", "POST", "PUT", "DELETE"])
+    .allow_methods(vec![Method::GET, Method::POST, Method::PUT, Method::DELETE])
     .allow_headers(vec!["Content-Type", "Authorization"])
     .into_handler();
 
@@ -100,12 +154,16 @@ let router = Router::new().hoop(cors);
 ```
 
 ### Rate Limiting
+
 ```rust
-use salvo::rate_limiter::{RateLimiter, FixedGuard, RemoteIpIssuer};
+use salvo::rate_limiter::{RateLimiter, FixedGuard, RemoteIpIssuer, BasicQuota, MokaStore};
+use std::time::Duration;
 
 let limiter = RateLimiter::new(
     FixedGuard::new(),
+    MokaStore::new(),
     RemoteIpIssuer,
+    BasicQuota::per_second(10),
 );
 
 let router = Router::new().hoop(limiter);
@@ -117,7 +175,7 @@ Store data in middleware for use in handlers:
 
 ```rust
 #[handler]
-async fn auth_middleware(depot: &mut Depot, ctrl: &mut FlowCtrl, req: &mut Request, res: &mut Response) {
+async fn auth_middleware(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
     let user = authenticate(req).await;
     depot.insert("user", user);
     ctrl.call_next(req, depot, res).await;
@@ -130,9 +188,27 @@ async fn protected_handler(depot: &mut Depot) -> String {
 }
 ```
 
+### Type-Safe Depot Usage
+
+```rust
+// Store different types
+depot.insert("string_value", "hello");
+depot.insert("int_value", 42);
+depot.insert("bool_value", true);
+
+// Safely retrieve values (type must match)
+if let Some(str_val) = depot.get::<&str>("string_value") {
+    println!("String value: {}", str_val);
+}
+
+if let Some(int_val) = depot.get::<i32>("int_value") {
+    println!("Int value: {}", int_val);
+}
+```
+
 ## Early Response
 
-Stop execution and return response:
+Stop execution and return response immediately:
 
 ```rust
 #[handler]
@@ -140,12 +216,20 @@ async fn validate_input(req: &mut Request, depot: &mut Depot, res: &mut Response
     if !is_valid_request(req) {
         res.status_code(StatusCode::BAD_REQUEST);
         res.render("Invalid request");
-        ctrl.skip_rest();  // Stop here
+        ctrl.skip_rest();  // Stop processing
         return;
     }
     ctrl.call_next(req, depot, res).await;
 }
 ```
+
+## FlowCtrl Methods
+
+`FlowCtrl` provides methods to control middleware chain execution:
+
+- `call_next()`: Call the next middleware or handler
+- `skip_rest()`: Skip remaining middleware and handlers
+- `is_ceased()`: Check if execution has been stopped
 
 ## Built-in Middleware
 
@@ -154,9 +238,9 @@ Salvo provides many built-in middleware:
 ```rust
 use salvo::compression::Compression;
 use salvo::cors::Cors;
-use salvo::csrf::CsrfHandler;
 use salvo::logging::Logger;
 use salvo::timeout::Timeout;
+use std::time::Duration;
 
 let router = Router::new()
     .hoop(Logger::new())
@@ -165,16 +249,29 @@ let router = Router::new()
     .hoop(Timeout::new(Duration::from_secs(30)));
 ```
 
-## Middleware Order
+### Common Built-in Middleware
 
-Middleware executes in onion model:
+| Middleware | Feature | Description |
+|------------|---------|-------------|
+| `Logger` | `logging` | Request/response logging |
+| `Compression` | `compression` | Response compression (gzip, brotli) |
+| `Cors` | `cors` | Cross-Origin Resource Sharing |
+| `Timeout` | `timeout` | Request timeout handling |
+| `CsrfHandler` | `csrf` | CSRF protection |
+| `RateLimiter` | `rate-limiter` | Rate limiting |
+| `ConcurrencyLimiter` | `concurrency-limiter` | Concurrent request limiting |
+| `SizeLimiter` | `size-limiter` | Request body size limiting |
+
+## Middleware Execution Order (Onion Model)
+
+Middleware executes in an onion-like pattern:
 
 ```rust
 Router::new()
-    .hoop(middleware_a)  // Runs first (outer)
+    .hoop(middleware_a)  // Runs first (outer layer)
     .hoop(middleware_b)  // Runs second
-    .hoop(middleware_c)  // Runs third (inner)
-    .get(handler);       // Runs last
+    .hoop(middleware_c)  // Runs third (inner layer)
+    .get(handler);       // Core handler
 
 // Execution order:
 // middleware_a (before) -> middleware_b (before) -> middleware_c (before)
@@ -191,3 +288,4 @@ Router::new()
 5. Order middleware by dependency (auth before authorization)
 6. Use built-in middleware when available
 7. Keep middleware focused on single concern
+8. Put logging middleware first to capture all requests

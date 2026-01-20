@@ -17,36 +17,42 @@
 
 AI agent skills for the [Salvo](https://salvo.rs) web framework. These skills help AI assistants understand and generate Salvo code more effectively.
 
-## 📚 What are Agent Skills?
+## What are Agent Skills?
 
 Agent Skills are specialized knowledge modules that AI assistants can load to perform specific tasks. They follow the [Agent Skills](https://agentskills.io) open standard and work with tools like GitHub Copilot, Claude Code, and other AI coding assistants.
 
-## 🎯 Available Skills
+## Available Skills
 
 ### Core Framework
 
-- **[salvo-basic-app](./salvo-basic-app)** - Create basic Salvo applications with handlers, routers, and server setup
-- **[salvo-routing](./salvo-routing)** - Configure routers with path parameters, nested routes, and filters
-- **[salvo-middleware](./salvo-middleware)** - Implement middleware for authentication, logging, CORS, and request processing
+| Skill | Description |
+|-------|-------------|
+| [salvo-basic-app](./skills/salvo-basic-app) | Create basic Salvo applications with handlers, routers, and server setup |
+| [salvo-routing](./skills/salvo-routing) | Configure routers with path parameters, nested routes, and filters |
+| [salvo-middleware](./skills/salvo-middleware) | Implement middleware for authentication, logging, CORS, and request processing |
 
 ### Data Handling
 
-- **[salvo-data-extraction](./salvo-data-extraction)** - Extract and validate data from requests (JSON, forms, query params, path params)
-- **[salvo-database](./salvo-database)** - Integrate databases using SQLx, Diesel, SeaORM, or other ORMs
-- **[salvo-file-handling](./salvo-file-handling)** - Handle file uploads, downloads, and serve static files
+| Skill | Description |
+|-------|-------------|
+| [salvo-data-extraction](./skills/salvo-data-extraction) | Extract and validate data from requests (JSON, forms, query params, path params) |
+| [salvo-database](./skills/salvo-database) | Integrate databases using SQLx, Diesel, SeaORM, or other ORMs |
+| [salvo-file-handling](./skills/salvo-file-handling) | Handle file uploads, downloads, and serve static files |
 
 ### Advanced Features
 
-- **[salvo-openapi](./salvo-openapi)** - Generate OpenAPI documentation automatically from handlers
-- **[salvo-auth](./salvo-auth)** - Implement authentication and authorization (JWT, Basic Auth, sessions)
-- **[salvo-realtime](./salvo-realtime)** - Implement WebSocket and Server-Sent Events for real-time features
-- **[salvo-testing](./salvo-testing)** - Write unit and integration tests using TestClient
+| Skill | Description |
+|-------|-------------|
+| [salvo-openapi](./skills/salvo-openapi) | Generate OpenAPI documentation automatically from handlers |
+| [salvo-auth](./skills/salvo-auth) | Implement authentication and authorization (JWT, Basic Auth, sessions) |
+| [salvo-realtime](./skills/salvo-realtime) | Implement WebSocket and Server-Sent Events for real-time features |
+| [salvo-testing](./skills/salvo-testing) | Write unit and integration tests using TestClient |
 
-## 🚀 Quick Start
+## Quick Start
 
 ### For GitHub Copilot / VS Code
 
-1. Copy the `salvo-skills` folder to your project:
+1. Copy the skills folder to your project:
    ```bash
    cp -r salvo-skills/skills .github/skills/
    ```
@@ -69,7 +75,7 @@ Agent Skills are specialized knowledge modules that AI assistants can load to pe
 
 2. Skills will be automatically loaded when working with Salvo code.
 
-## 💡 Usage Examples
+## Usage Examples
 
 Once installed, you can ask your AI assistant questions like:
 
@@ -81,7 +87,43 @@ Once installed, you can ask your AI assistant questions like:
 
 The AI will use these skills to provide accurate, framework-specific guidance.
 
-## 📖 Skill Structure
+## Key Concepts Covered
+
+### Handlers and Routing
+- `#[handler]` macro for request handlers
+- Path parameters with `{id}` syntax
+- Nested routers with `push()`
+- HTTP method handlers (get, post, put, patch, delete)
+
+### Middleware
+- Using `hoop()` to attach middleware
+- `FlowCtrl` for flow control
+- `Depot` for request-scoped data sharing
+- Onion model execution order
+
+### Data Extraction
+- `JsonBody<T>` for JSON requests
+- `req.param()`, `req.query()` for parameters
+- `Extractible` derive macro for complex extraction
+- Validation with validator crate
+
+### Database Integration
+- `affix_state::inject()` for dependency injection
+- `depot.obtain::<T>()` for retrieving state
+- SQLx, SeaORM, Diesel support
+
+### Authentication
+- JWT with `JwtAuth` middleware
+- Basic Auth with `BasicAuthValidator`
+- Session-based auth with `SessionHandler`
+- Role-based access control (RBAC)
+
+### OpenAPI
+- `#[endpoint]` macro for documentation
+- `ToSchema` and `ToParameters` derives
+- SwaggerUi integration
+
+## Skill Structure
 
 Each skill contains:
 
@@ -90,7 +132,7 @@ Each skill contains:
 - **Best Practices** - Framework-specific recommendations
 - **Setup Instructions** - Dependencies and configuration
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! To add or improve skills:
 
@@ -114,18 +156,18 @@ description: Brief description of what the skill does and when to use it
 Detailed instructions, examples, and best practices...
 ```
 
-## 📝 License
+## License
 
 These skills are part of the Salvo project and follow the same license.
 
-## 🔗 Links
+## Links
 
 - [Salvo Framework](https://github.com/salvo-rs/salvo)
 - [Salvo Documentation](https://salvo.rs)
 - [Agent Skills Specification](https://agentskills.io)
 - [Discord Community](https://discord.gg/G8KfmS6ByH)
 
-## ⭐ Support
+## Support
 
 If you find these skills helpful, please consider:
 
@@ -136,5 +178,5 @@ If you find these skills helpful, please consider:
 ---
 
 <div align="center">
-Made with ❤️ for the Salvo community
+Made with love for the Salvo community
 </div>
