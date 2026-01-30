@@ -11,7 +11,7 @@ This skill helps serve static files in Salvo applications, including directories
 
 ```toml
 [dependencies]
-salvo = { version = "1.88.1", features = ["serve-static"] }
+salvo = { version = "0.89.0", features = ["serve-static"] }
 
 # For embedded files
 rust-embed = "8"

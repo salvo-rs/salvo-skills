@@ -31,7 +31,7 @@ Server-Sent Events (SSE) is a standard for pushing updates from server to client
 
 ```toml
 [dependencies]
-salvo = { version = "1.88.1", features = ["sse"] }
+salvo = { version = "0.89.0", features = ["sse"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"

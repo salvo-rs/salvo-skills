@@ -193,7 +193,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-salvo = "1.88.1"
+salvo = "0.89.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

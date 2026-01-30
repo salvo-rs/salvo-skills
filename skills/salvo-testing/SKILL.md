@@ -13,7 +13,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-salvo = { version = "1.88.1", features = ["test"] }
+salvo = { version = "0.89.0", features = ["test"] }
 tokio-test = "0.4"
 ```
 

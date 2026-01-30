@@ -11,7 +11,7 @@ This skill helps handle file uploads and downloads in Salvo applications.
 
 ```toml
 [dependencies]
-salvo = "1.88.1"
+salvo = "0.89.0"
 tokio = { version = "1", features = ["fs"] }
 ```
 

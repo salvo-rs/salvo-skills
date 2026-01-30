@@ -21,7 +21,7 @@ Common use cases:
 
 ```toml
 [dependencies]
-salvo = { version = "1.88.1", features = ["flash"] }
+salvo = { version = "0.89.0", features = ["flash"] }
 ```
 
 ## Basic Flash Messages with Cookie Store

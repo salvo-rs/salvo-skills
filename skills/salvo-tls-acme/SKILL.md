@@ -13,7 +13,7 @@ This skill helps configure TLS/HTTPS and automatic certificate management in Sal
 
 ```toml
 [dependencies]
-salvo = { version = "1.88.1", features = ["rustls"] }
+salvo = { version = "0.89.0", features = ["rustls"] }
 ```
 
 ### Basic TLS Configuration
@@ -70,7 +70,7 @@ let config = RustlsConfig::new(
 
 ```toml
 [dependencies]
-salvo = { version = "1.88.1", features = ["acme"] }
+salvo = { version = "0.89.0", features = ["acme"] }
 ```
 
 ### HTTP-01 Challenge
@@ -229,7 +229,7 @@ let config = RustlsConfig::new(
 
 ```toml
 [dependencies]
-salvo = { version = "1.88.1", features = ["quinn"] }
+salvo = { version = "0.89.0", features = ["quinn"] }
 ```
 
 ```rust

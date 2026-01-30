@@ -15,7 +15,7 @@ Sessions allow you to store user-specific data (like login status, shopping cart
 
 ```toml
 [dependencies]
-salvo = { version = "1.88.1", features = ["session"] }
+salvo = { version = "0.89.0", features = ["session"] }
 ```
 
 ## Basic Session Setup

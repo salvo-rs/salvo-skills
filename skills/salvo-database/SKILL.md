@@ -13,7 +13,7 @@ This skill helps integrate databases with Salvo applications.
 
 ```toml
 [dependencies]
-salvo = "1.88.1"
+salvo = "0.89.0"
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }
@@ -108,7 +108,7 @@ async fn get_user(req: &mut Request, depot: &mut Depot) -> Result<Json<User>, St
 
 ```toml
 [dependencies]
-salvo = "1.88.1"
+salvo = "0.89.0"
 sea-orm = { version = "1.0", features = ["sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -195,7 +195,7 @@ async fn create_user(body: JsonBody<CreateUser>, depot: &mut Depot) -> Result<St
 
 ```toml
 [dependencies]
-salvo = "1.88.1"
+salvo = "0.89.0"
 diesel = { version = "2.2", features = ["postgres", "r2d2"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```

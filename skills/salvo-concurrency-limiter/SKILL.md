@@ -23,7 +23,7 @@ Concurrency limiter is built into Salvo core:
 
 ```toml
 [dependencies]
-salvo = "1.88.1"
+salvo = "0.89.0"
 ```
 
 ## Basic Concurrency Limit

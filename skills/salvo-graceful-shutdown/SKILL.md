@@ -20,7 +20,7 @@ Graceful shutdown is built into Salvo core:
 
 ```toml
 [dependencies]
-salvo = "1.88.1"
+salvo = "0.89.0"
 tokio = { version = "1", features = ["full", "signal"] }
 ```
 

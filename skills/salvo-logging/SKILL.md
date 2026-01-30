@@ -11,7 +11,7 @@ This skill helps implement logging and tracing in Salvo applications for debuggi
 
 ```toml
 [dependencies]
-salvo = { version = "1.88.1", features = ["logging"] }
+salvo = { version = "0.89.0", features = ["logging"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ```

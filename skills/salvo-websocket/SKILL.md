@@ -15,7 +15,7 @@ WebSocket provides full-duplex communication channels over a single TCP connecti
 
 ```toml
 [dependencies]
-salvo = { version = "1.88.1", features = ["websocket"] }
+salvo = { version = "0.89.0", features = ["websocket"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
 ```

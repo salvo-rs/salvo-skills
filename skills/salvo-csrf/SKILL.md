@@ -15,7 +15,7 @@ Cross-Site Request Forgery (CSRF) is an attack that tricks users into executing 
 
 ```toml
 [dependencies]
-salvo = { version = "1.88.1", features = ["csrf"] }
+salvo = { version = "0.89.0", features = ["csrf"] }
 ```
 
 ## CSRF Protection Methods

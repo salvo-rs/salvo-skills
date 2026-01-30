@@ -64,7 +64,7 @@ Enable features for popular error handling crates:
 
 ```toml
 [dependencies]
-salvo = { version = "1.88.1", features = ["anyhow", "eyre"] }
+salvo = { version = "0.89.0", features = ["anyhow", "eyre"] }
 anyhow = "1"
 eyre = "0.6"
 ```
