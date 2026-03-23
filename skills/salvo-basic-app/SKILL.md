@@ -1,6 +1,8 @@
 ---
 name: salvo-basic-app
 description: Create basic Salvo web applications with handlers, routers, and server setup. Use when starting a new Salvo project or adding basic HTTP endpoints.
+version: 0.89.3
+tags: [core, getting-started, handler, router]
 ---
 
 # Salvo Basic Application Setup
@@ -193,7 +195,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-salvo = "0.89.0"
+salvo = "0.89.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

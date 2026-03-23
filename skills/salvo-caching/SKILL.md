@@ -1,11 +1,30 @@
 ---
 name: salvo-caching
 description: Implement caching strategies for improved performance. Use for reducing database load and speeding up responses.
+version: 0.89.3
+tags: [performance, caching, cache-control, etag]
 ---
 
 # Salvo Caching Strategies
 
 This skill helps implement caching in Salvo applications for better performance.
+
+## Setup
+
+```toml
+[dependencies]
+salvo = "0.89.3"
+tokio = { version = "1", features = ["full"] }
+```
+
+For in-memory caching with Moka:
+
+```toml
+[dependencies]
+salvo = "0.89.3"
+moka = { version = "0.12", features = ["future"] }
+tokio = { version = "1", features = ["full"] }
+```
 
 ## HTTP Cache Headers
 

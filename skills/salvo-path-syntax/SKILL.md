@@ -1,6 +1,8 @@
 ---
 name: salvo-path-syntax
 description: Path parameter syntax guide for Salvo routing. Explains the `{}` syntax (v0.76+) vs deprecated `<>` syntax, with migration examples.
+version: 0.89.3
+tags: [core, routing, path-syntax, migration]
 ---
 
 # Salvo Path Parameter Syntax

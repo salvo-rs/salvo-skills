@@ -1,6 +1,8 @@
 ---
 name: salvo-testing
 description: Write unit and integration tests for Salvo applications using TestClient. Use for testing handlers, middleware, and API endpoints.
+version: 0.89.3
+tags: [advanced, testing, test-client, integration]
 ---
 
 # Salvo Testing
@@ -13,7 +15,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-salvo = { version = "0.89.0", features = ["test"] }
+salvo = { version = "0.89.3", features = ["test"] }
 tokio-test = "0.4"
 ```
 

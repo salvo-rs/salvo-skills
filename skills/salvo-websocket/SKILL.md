@@ -1,6 +1,8 @@
 ---
 name: salvo-websocket
 description: Implement WebSocket connections for real-time bidirectional communication. Use for chat, live updates, gaming, and collaborative features.
+version: 0.89.3
+tags: [realtime, websocket, bidirectional, chat]
 ---
 
 # Salvo WebSocket
@@ -15,7 +17,7 @@ WebSocket provides full-duplex communication channels over a single TCP connecti
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["websocket"] }
+salvo = { version = "0.89.3", features = ["websocket"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
 ```

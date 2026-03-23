@@ -1,6 +1,8 @@
 ---
 name: salvo-concurrency-limiter
 description: Limit concurrent requests to protect resources. Use for file uploads, expensive operations, and preventing resource exhaustion.
+version: 0.89.3
+tags: [performance, concurrency, limiter]
 ---
 
 # Salvo Concurrency Limiter
@@ -23,7 +25,7 @@ Concurrency limiter is built into Salvo core:
 
 ```toml
 [dependencies]
-salvo = "0.89.0"
+salvo = "0.89.3"
 ```
 
 ## Basic Concurrency Limit

@@ -1,6 +1,8 @@
 ---
 name: salvo-static-files
 description: Serve static files, directories, and embedded assets. Use for CSS, JavaScript, images, and downloadable content.
+version: 0.89.3
+tags: [data, static-files, assets, serve-static]
 ---
 
 # Salvo Static File Serving
@@ -11,7 +13,7 @@ This skill helps serve static files in Salvo applications, including directories
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["serve-static"] }
+salvo = { version = "0.89.3", features = ["serve-static"] }
 
 # For embedded files
 rust-embed = "8"

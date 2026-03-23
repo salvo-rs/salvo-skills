@@ -1,6 +1,8 @@
 ---
 name: salvo-error-handling
 description: Handle errors gracefully with custom error types, status codes, and error pages. Use for building robust APIs with proper error responses.
+version: 0.89.3
+tags: [core, error-handling, status-code]
 ---
 
 # Salvo Error Handling
@@ -64,7 +66,7 @@ Enable features for popular error handling crates:
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["anyhow", "eyre"] }
+salvo = { version = "0.89.3", features = ["anyhow", "eyre"] }
 anyhow = "1"
 eyre = "0.6"
 ```

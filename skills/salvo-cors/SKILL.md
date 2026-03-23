@@ -1,6 +1,8 @@
 ---
 name: salvo-cors
 description: Configure Cross-Origin Resource Sharing (CORS) and security headers. Use for APIs accessed from browsers on different domains.
+version: 0.89.3
+tags: [security, cors, cross-origin, headers]
 ---
 
 # Salvo CORS Configuration
@@ -15,7 +17,7 @@ CORS (Cross-Origin Resource Sharing) is a browser security feature that restrict
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["cors"] }
+salvo = { version = "0.89.3", features = ["cors"] }
 ```
 
 ## Basic CORS Configuration

@@ -21,7 +21,7 @@ AI agent skills for the [Salvo](https://salvo.rs) web framework. These skills he
 
 Agent Skills are specialized knowledge modules that AI assistants can load to perform specific tasks. They follow the [Agent Skills](https://agentskills.io) open standard and work with tools like GitHub Copilot, Claude Code, and other AI coding assistants.
 
-## Available Skills (27 Total)
+## Available Skills (28 Total)
 
 ### Core Framework
 
@@ -31,6 +31,7 @@ Agent Skills are specialized knowledge modules that AI assistants can load to pe
 | [salvo-routing](./skills/salvo-routing) | Configure routers with path parameters, nested routes, and filters |
 | [salvo-middleware](./skills/salvo-middleware) | Implement middleware for authentication, logging, CORS, and request processing |
 | [salvo-error-handling](./skills/salvo-error-handling) | Handle errors gracefully with custom error types and error pages |
+| [salvo-path-syntax](./skills/salvo-path-syntax) | Path parameter syntax guide with `{}` syntax (v0.76+) and migration examples |
 
 ### Data Handling
 

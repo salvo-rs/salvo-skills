@@ -1,6 +1,8 @@
 ---
 name: salvo-sse
 description: Implement Server-Sent Events for real-time server-to-client updates. Use for live feeds, notifications, and streaming data.
+version: 0.89.3
+tags: [realtime, sse, server-sent-events, streaming]
 ---
 
 # Salvo Server-Sent Events (SSE)
@@ -31,10 +33,11 @@ Server-Sent Events (SSE) is a standard for pushing updates from server to client
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["sse"] }
+salvo = { version = "0.89.3", features = ["sse"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
+async-stream = "0.3"  # Required for async_stream::stream! macro
 ```
 
 ## Basic SSE Counter

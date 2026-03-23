@@ -1,6 +1,8 @@
 ---
 name: salvo-flash
 description: Implement flash messages for one-time notifications across redirects. Use for success/error messages after form submissions.
+version: 0.89.3
+tags: [advanced, flash-messages, notifications]
 ---
 
 # Salvo Flash Messages
@@ -21,7 +23,7 @@ Common use cases:
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["flash"] }
+salvo = { version = "0.89.3", features = ["flash"] }
 ```
 
 ## Basic Flash Messages with Cookie Store

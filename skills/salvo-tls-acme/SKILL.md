@@ -1,6 +1,8 @@
 ---
 name: salvo-tls-acme
 description: Configure TLS/HTTPS with automatic certificate management via ACME (Let's Encrypt). Use for production deployments with secure connections.
+version: 0.89.3
+tags: [security, tls, https, acme, certificate]
 ---
 
 # Salvo TLS and ACME Configuration
@@ -13,7 +15,7 @@ This skill helps configure TLS/HTTPS and automatic certificate management in Sal
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["rustls"] }
+salvo = { version = "0.89.3", features = ["rustls"] }
 ```
 
 ### Basic TLS Configuration
@@ -70,7 +72,7 @@ let config = RustlsConfig::new(
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["acme"] }
+salvo = { version = "0.89.3", features = ["acme"] }
 ```
 
 ### HTTP-01 Challenge
@@ -229,7 +231,7 @@ let config = RustlsConfig::new(
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["quinn"] }
+salvo = { version = "0.89.3", features = ["quinn"] }
 ```
 
 ```rust

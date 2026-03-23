@@ -1,6 +1,8 @@
 ---
 name: salvo-middleware
 description: Implement middleware for authentication, logging, CORS, and request processing. Use for cross-cutting concerns and request/response modification.
+version: 0.89.3
+tags: [core, middleware, hoop, flow-ctrl]
 ---
 
 # Salvo Middleware

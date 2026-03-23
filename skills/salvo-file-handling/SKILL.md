@@ -1,6 +1,8 @@
 ---
 name: salvo-file-handling
 description: Handle file uploads (single/multiple), downloads, and multipart forms. Use for file management, image uploads, and content delivery.
+version: 0.89.3
+tags: [data, file-upload, multipart, download]
 ---
 
 # Salvo File Handling
@@ -11,7 +13,7 @@ This skill helps handle file uploads and downloads in Salvo applications.
 
 ```toml
 [dependencies]
-salvo = "0.89.0"
+salvo = "0.89.3"
 tokio = { version = "1", features = ["fs"] }
 ```
 

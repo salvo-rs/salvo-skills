@@ -1,6 +1,8 @@
 ---
 name: salvo-rate-limiter
 description: Implement rate limiting to protect APIs from abuse. Use for preventing DDoS attacks and ensuring fair resource usage.
+version: 0.89.3
+tags: [security, rate-limiting, throttling]
 ---
 
 # Salvo Rate Limiting
@@ -11,7 +13,7 @@ This skill helps implement rate limiting in Salvo applications to protect agains
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["rate-limiter"] }
+salvo = { version = "0.89.3", features = ["rate-limiter"] }
 ```
 
 ## Basic Rate Limiting

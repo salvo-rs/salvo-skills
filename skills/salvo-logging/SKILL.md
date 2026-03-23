@@ -1,6 +1,8 @@
 ---
 name: salvo-logging
 description: Implement request logging, tracing, and observability. Use for debugging, monitoring, and production observability.
+version: 0.89.3
+tags: [operations, logging, tracing, observability]
 ---
 
 # Salvo Logging and Tracing
@@ -11,7 +13,7 @@ This skill helps implement logging and tracing in Salvo applications for debuggi
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["logging"] }
+salvo = { version = "0.89.3", features = ["logging"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ```

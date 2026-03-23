@@ -1,6 +1,8 @@
 ---
 name: salvo-openapi
 description: Generate OpenAPI documentation automatically from Salvo handlers. Use for API documentation, Swagger UI, and API client generation.
+version: 0.89.3
+tags: [advanced, openapi, swagger, documentation]
 ---
 
 # Salvo OpenAPI Integration
@@ -20,7 +22,7 @@ Add dependencies:
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["oapi"] }
+salvo = { version = "0.89.3", features = ["oapi"] }
 serde = { version = "1", features = ["derive"] }
 ```
 

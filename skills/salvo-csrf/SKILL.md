@@ -1,6 +1,8 @@
 ---
 name: salvo-csrf
 description: Implement CSRF (Cross-Site Request Forgery) protection using cookie or session storage. Use for protecting forms and state-changing endpoints.
+version: 0.89.3
+tags: [security, csrf, protection]
 ---
 
 # Salvo CSRF Protection
@@ -15,7 +17,7 @@ Cross-Site Request Forgery (CSRF) is an attack that tricks users into executing 
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["csrf"] }
+salvo = { version = "0.89.3", features = ["csrf"] }
 ```
 
 ## CSRF Protection Methods

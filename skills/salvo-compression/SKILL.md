@@ -1,6 +1,8 @@
 ---
 name: salvo-compression
 description: Compress HTTP responses using gzip, brotli, zstd, or deflate. Use for reducing bandwidth and improving load times.
+version: 0.89.3
+tags: [performance, compression, gzip, brotli]
 ---
 
 # Salvo Response Compression
@@ -19,7 +21,7 @@ HTTP compression reduces response size by compressing content before sending. Th
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.0", features = ["compression"] }
+salvo = { version = "0.89.3", features = ["compression"] }
 ```
 
 ## Basic Usage
