@@ -27,67 +27,67 @@ Agent Skills are specialized knowledge modules that AI assistants can load to pe
 
 | Skill | Description |
 |-------|-------------|
-| [salvo-basic-app](./skills/salvo-basic-app) | Create basic Salvo applications with handlers, routers, and server setup |
-| [salvo-routing](./skills/salvo-routing) | Configure routers with path parameters, nested routes, and filters |
-| [salvo-middleware](./skills/salvo-middleware) | Implement middleware for authentication, logging, CORS, and request processing |
-| [salvo-error-handling](./skills/salvo-error-handling) | Handle errors gracefully with custom error types and error pages |
-| [salvo-path-syntax](./skills/salvo-path-syntax) | Path parameter syntax guide with `{}` syntax (v0.76+) and migration examples |
+| [salvo-basic-app](./salvo-basic-app) | Create basic Salvo applications with handlers, routers, and server setup |
+| [salvo-routing](./salvo-routing) | Configure routers with path parameters, nested routes, and filters |
+| [salvo-middleware](./salvo-middleware) | Implement middleware for authentication, logging, CORS, and request processing |
+| [salvo-error-handling](./salvo-error-handling) | Handle errors gracefully with custom error types and error pages |
+| [salvo-path-syntax](./salvo-path-syntax) | Path parameter syntax guide with `{}` syntax (v0.76+) and migration examples |
 
 ### Data Handling
 
 | Skill | Description |
 |-------|-------------|
-| [salvo-data-extraction](./skills/salvo-data-extraction) | Extract and validate data from requests (JSON, forms, query params, path params) |
-| [salvo-database](./skills/salvo-database) | Integrate databases using SQLx, Diesel, SeaORM, or other ORMs |
-| [salvo-file-handling](./skills/salvo-file-handling) | Handle file uploads, downloads, and multipart forms |
-| [salvo-static-files](./skills/salvo-static-files) | Serve static files, directories, and embedded assets |
-| [salvo-caching](./skills/salvo-caching) | Implement caching strategies for improved performance |
+| [salvo-data-extraction](./salvo-data-extraction) | Extract and validate data from requests (JSON, forms, query params, path params) |
+| [salvo-database](./salvo-database) | Integrate databases using SQLx, Diesel, SeaORM, or other ORMs |
+| [salvo-file-handling](./salvo-file-handling) | Handle file uploads, downloads, and multipart forms |
+| [salvo-static-files](./salvo-static-files) | Serve static files, directories, and embedded assets |
+| [salvo-caching](./salvo-caching) | Implement caching strategies for improved performance |
 
 ### Security
 
 | Skill | Description |
 |-------|-------------|
-| [salvo-auth](./skills/salvo-auth) | Implement authentication and authorization (JWT, Basic Auth, sessions) |
-| [salvo-session](./skills/salvo-session) | Manage user sessions for login, shopping carts, and preferences |
-| [salvo-csrf](./skills/salvo-csrf) | Protect against Cross-Site Request Forgery attacks |
-| [salvo-cors](./skills/salvo-cors) | Configure CORS and security headers for browser access |
-| [salvo-rate-limiter](./skills/salvo-rate-limiter) | Implement rate limiting to protect APIs from abuse |
-| [salvo-tls-acme](./skills/salvo-tls-acme) | Configure TLS/HTTPS with automatic certificate management |
+| [salvo-auth](./salvo-auth) | Implement authentication and authorization (JWT, Basic Auth, sessions) |
+| [salvo-session](./salvo-session) | Manage user sessions for login, shopping carts, and preferences |
+| [salvo-csrf](./salvo-csrf) | Protect against Cross-Site Request Forgery attacks |
+| [salvo-cors](./salvo-cors) | Configure CORS and security headers for browser access |
+| [salvo-rate-limiter](./salvo-rate-limiter) | Implement rate limiting to protect APIs from abuse |
+| [salvo-tls-acme](./salvo-tls-acme) | Configure TLS/HTTPS with automatic certificate management |
 
 ### Real-time Communication
 
 | Skill | Description |
 |-------|-------------|
-| [salvo-realtime](./skills/salvo-realtime) | Overview of real-time features with WebSocket and SSE |
-| [salvo-websocket](./skills/salvo-websocket) | Full-duplex bidirectional WebSocket communication |
-| [salvo-sse](./skills/salvo-sse) | Server-Sent Events for live notifications and feeds |
+| [salvo-realtime](./salvo-realtime) | Overview of real-time features with WebSocket and SSE |
+| [salvo-websocket](./salvo-websocket) | Full-duplex bidirectional WebSocket communication |
+| [salvo-sse](./salvo-sse) | Server-Sent Events for live notifications and feeds |
 
 ### Performance & Operations
 
 | Skill | Description |
 |-------|-------------|
-| [salvo-compression](./skills/salvo-compression) | Compress HTTP responses using gzip, brotli, or zstd |
-| [salvo-timeout](./skills/salvo-timeout) | Configure request timeouts to prevent slow requests |
-| [salvo-concurrency-limiter](./skills/salvo-concurrency-limiter) | Limit concurrent requests to protect resources |
-| [salvo-graceful-shutdown](./skills/salvo-graceful-shutdown) | Handle in-flight requests before server shutdown |
-| [salvo-logging](./skills/salvo-logging) | Implement request logging, tracing, and observability |
+| [salvo-compression](./salvo-compression) | Compress HTTP responses using gzip, brotli, or zstd |
+| [salvo-timeout](./salvo-timeout) | Configure request timeouts to prevent slow requests |
+| [salvo-concurrency-limiter](./salvo-concurrency-limiter) | Limit concurrent requests to protect resources |
+| [salvo-graceful-shutdown](./salvo-graceful-shutdown) | Handle in-flight requests before server shutdown |
+| [salvo-logging](./salvo-logging) | Implement request logging, tracing, and observability |
 
 ### Advanced Features
 
 | Skill | Description |
 |-------|-------------|
-| [salvo-openapi](./skills/salvo-openapi) | Generate OpenAPI documentation automatically from handlers |
-| [salvo-proxy](./skills/salvo-proxy) | Implement reverse proxy for load balancing and API gateways |
-| [salvo-flash](./skills/salvo-flash) | Flash messages for one-time notifications across redirects |
-| [salvo-testing](./skills/salvo-testing) | Write unit and integration tests using TestClient |
+| [salvo-openapi](./salvo-openapi) | Generate OpenAPI documentation automatically from handlers |
+| [salvo-proxy](./salvo-proxy) | Implement reverse proxy for load balancing and API gateways |
+| [salvo-flash](./salvo-flash) | Flash messages for one-time notifications across redirects |
+| [salvo-testing](./salvo-testing) | Write unit and integration tests using TestClient |
 
 ## Quick Start
 
 ### For GitHub Copilot / VS Code
 
-1. Copy the skills folder to your project:
+1. Copy the skill directories to your project:
    ```bash
-   cp -r salvo-skills/skills .github/skills/
+   cp -r salvo-skills/salvo-* .github/skills/
    ```
 
 2. Enable agent skills in VS Code settings:
@@ -101,9 +101,9 @@ Agent Skills are specialized knowledge modules that AI assistants can load to pe
 
 ### For Claude Code
 
-1. Copy the skills to your project:
+1. Copy the skill directories to your project:
    ```bash
-   cp -r salvo-skills/skills .claude/skills/
+   cp -r salvo-skills/salvo-* .claude/skills/
    ```
 
 2. Skills will be automatically loaded when working with Salvo code.
