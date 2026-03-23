@@ -283,9 +283,8 @@ enum Role {
     Guest,
 }
 
-#[handler]
 fn require_role(required: Role) -> impl Handler {
-    move |depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl| async move {
+    move |req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl| async move {
         let user_role = depot.get::<Role>("user_role");
 
         match user_role {
@@ -296,18 +295,16 @@ fn require_role(required: Role) -> impl Handler {
                 res.status_code(StatusCode::FORBIDDEN);
                 res.render("Insufficient permissions");
                 ctrl.skip_rest();
-                return;
             }
         }
     }
-    check_role
 }
 
 let router = Router::new()
     .push(
         Router::with_path("admin")
             .hoop(auth_middleware)
-            .hoop(RequireRole::new(Role::Admin))
+            .hoop(require_role(Role::Admin))
             .get(admin_handler)
     )
     .push(

@@ -204,10 +204,10 @@ For the latest version, always use `{}` syntax:
 
 ```toml
 [dependencies]
-salvo = "1.88.1"  # Current stable - uses {} syntax
+salvo = "0.89.3"  # Current stable - uses {} syntax
 ```
 
-Note: The `{}` syntax was introduced in version 0.76 and is used in all versions since then, including the current 1.x releases.
+Note: The `{}` syntax was introduced in version 0.76 and is used in all versions since then.
 
 ## Best Practices
 
