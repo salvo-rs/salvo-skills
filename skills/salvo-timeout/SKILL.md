@@ -275,3 +275,9 @@ async fn main() {
 6. **Combine with rate limiting**: Protect against slowloris attacks
 7. **Graceful degradation**: Return meaningful error messages on timeout
 8. **No timeout for WebSocket**: Long-lived connections shouldn't have request timeouts
+
+## Related Skills
+
+- **salvo-concurrency-limiter**: Limit concurrent requests
+- **salvo-rate-limiter**: Rate limit alongside timeouts
+- **salvo-graceful-shutdown**: Handle timeouts during shutdown

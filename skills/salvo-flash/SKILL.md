@@ -413,3 +413,7 @@ fn flash_to_json(depot: &Depot) -> serde_json::Value {
 6. **Clear after display**: Flash messages auto-clear, don't display twice
 7. **Handle empty flash**: Check if flash exists before rendering
 8. **Escape HTML**: Sanitize message content if it includes user input
+
+## Related Skills
+
+- **salvo-session**: Flash messages with session storage

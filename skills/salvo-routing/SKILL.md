@@ -252,3 +252,9 @@ let router = Router::new()
 5. Use descriptive parameter names
 6. Apply middleware at the appropriate route level
 7. Prefer `{id}` syntax for consistency
+
+## Related Skills
+
+- **salvo-basic-app**: Basic application setup and handler patterns
+- **salvo-path-syntax**: Path parameter syntax guide and migration
+- **salvo-middleware**: Attach middleware to routes with hoop()

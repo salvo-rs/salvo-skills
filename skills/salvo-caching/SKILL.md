@@ -399,3 +399,9 @@ async fn main() {
 6. **Size cache appropriately**: Balance memory usage and hit rate
 7. **Cache at multiple layers**: Browser, CDN, application, database
 8. **Consider stale-while-revalidate**: Serve stale content while refreshing
+
+## Related Skills
+
+- **salvo-compression**: Compress cached responses
+- **salvo-static-files**: Cache static file responses
+- **salvo-database**: Cache database query results

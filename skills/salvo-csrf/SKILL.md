@@ -355,3 +355,8 @@ async fn main() {
 5. **Validate on all state-changing requests**: POST, PUT, DELETE, PATCH all need protection
 6. **Use SameSite cookies**: Combine CSRF with SameSite=Strict cookies for extra protection
 7. **Rotate tokens**: Generate new tokens after successful form submission
+
+## Related Skills
+
+- **salvo-cors**: CORS configuration for cross-origin requests
+- **salvo-session**: CSRF with session-based storage

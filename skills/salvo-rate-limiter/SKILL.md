@@ -355,3 +355,9 @@ async fn main() {
 6. **Consider sliding window**: Smoother rate limiting than fixed window
 7. **Handle gracefully**: Return helpful error messages
 8. **Test under load**: Verify limits work correctly
+
+## Related Skills
+
+- **salvo-concurrency-limiter**: Limit concurrent requests
+- **salvo-auth**: Combine rate limiting with authentication
+- **salvo-timeout**: Set timeouts alongside rate limits

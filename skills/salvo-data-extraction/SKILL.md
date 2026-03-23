@@ -444,3 +444,9 @@ async fn main() {
 6. Handle extraction errors with proper error responses
 7. Use `into_inner()` to unwrap extracted data
 8. Add `#[serde(default)]` for optional fields
+
+## Related Skills
+
+- **salvo-openapi**: Auto-generate docs for extracted parameters
+- **salvo-file-handling**: Handle file uploads and multipart forms
+- **salvo-testing**: Test data extraction with TestClient

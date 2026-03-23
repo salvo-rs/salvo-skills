@@ -289,3 +289,10 @@ Router::new()
 6. Use built-in middleware when available
 7. Keep middleware focused on single concern
 8. Put logging middleware first to capture all requests
+
+## Related Skills
+
+- **salvo-auth**: Authentication and authorization middleware
+- **salvo-cors**: CORS middleware configuration
+- **salvo-compression**: Response compression middleware
+- **salvo-logging**: Request logging and tracing middleware

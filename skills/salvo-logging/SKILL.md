@@ -481,3 +481,9 @@ async fn main() {
 6. **Include timing information**: Track request duration for performance monitoring
 7. **Don't log sensitive data**: Passwords, tokens, PII should never be logged
 8. **Use async/non-blocking**: Don't let logging slow down request handling
+
+## Related Skills
+
+- **salvo-error-handling**: Log and trace errors
+- **salvo-middleware**: Logging as middleware
+- **salvo-testing**: Verify logging in tests

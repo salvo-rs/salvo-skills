@@ -534,3 +534,9 @@ async fn create_user(body: JsonBody<CreateUser>) -> Result<Json<User>, ApiError>
 10. Use security schemes for protected endpoints
 11. Serve Swagger UI for interactive documentation
 12. Keep documentation in sync by generating from code
+
+## Related Skills
+
+- **salvo-data-extraction**: Extract parameters for documentation
+- **salvo-error-handling**: Document error responses
+- **salvo-auth**: Document security schemes

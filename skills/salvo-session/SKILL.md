@@ -410,3 +410,9 @@ async fn clear_cart(depot: &mut Depot, res: &mut Response) {
 6. **Validate session data**: Don't trust session data blindly
 7. **Regenerate session on login**: Prevent session fixation attacks
 8. **Clean up on logout**: Remove all sensitive session data
+
+## Related Skills
+
+- **salvo-auth**: Authentication using sessions
+- **salvo-csrf**: CSRF protection with session store
+- **salvo-flash**: Flash messages using sessions

@@ -258,3 +258,8 @@ curl -H "Accept-Encoding: br" -v http://localhost:8080/api/data
 6. **Monitor CPU usage**: High compression levels increase CPU load
 7. **Test with real clients**: Verify compression works end-to-end
 8. **Consider CDN compression**: CDNs often handle compression for you
+
+## Related Skills
+
+- **salvo-static-files**: Serve and compress static files
+- **salvo-caching**: Combine compression with caching

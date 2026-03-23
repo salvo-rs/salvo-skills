@@ -364,3 +364,9 @@ async fn main() {
 8. Consider using migrations for schema management
 9. Use connection pooling for performance
 10. Keep database operations in dedicated handler functions
+
+## Related Skills
+
+- **salvo-error-handling**: Handle database errors gracefully
+- **salvo-testing**: Integration testing with databases
+- **salvo-caching**: Cache database query results

@@ -492,3 +492,9 @@ async fn main() {
 8. **Use async I/O**: Don't block with sync file operations
 9. **Consider virus scanning**: For user-uploaded content
 10. **Set Content-Disposition**: Force download or inline display as appropriate
+
+## Related Skills
+
+- **salvo-static-files**: Serve static files and directories
+- **salvo-data-extraction**: Extract form data alongside files
+- **salvo-openapi**: Document file upload endpoints

@@ -455,3 +455,9 @@ async fn main() {
 8. Use refresh tokens for long-lived sessions
 9. Implement proper logout functionality (token revocation)
 10. Log authentication failures for security monitoring
+
+## Related Skills
+
+- **salvo-session**: Session-based authentication
+- **salvo-cors**: Configure CORS for authenticated APIs
+- **salvo-rate-limiter**: Rate limit authentication endpoints

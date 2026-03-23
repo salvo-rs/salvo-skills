@@ -216,3 +216,8 @@ Note: The `{}` syntax was introduced in version 0.76 and is used in all versions
 3. **Use typed parameters** when possible for automatic validation
 4. **Use regex constraints** for complex validation requirements
 5. **Name your wildcards** for clarity (`{**path}` instead of `{**}`)
+
+## Related Skills
+
+- **salvo-routing**: Full routing configuration guide
+- **salvo-basic-app**: Basic application setup

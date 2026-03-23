@@ -341,3 +341,8 @@ let acme_config = AcmeConfig::builder()
 6. **Monitor expiration**: Alert before certificates expire
 7. **Redirect HTTP to HTTPS**: Don't serve content over HTTP
 8. **Use strong ciphers**: Let Rustls handle cipher selection
+
+## Related Skills
+
+- **salvo-graceful-shutdown**: Graceful shutdown for HTTPS servers
+- **salvo-cors**: Security headers for HTTPS

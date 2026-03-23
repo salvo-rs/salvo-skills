@@ -448,3 +448,9 @@ async fn main() {
 6. **Log shutdown progress**: Helps debugging deployment issues
 7. **Match orchestrator grace period**: Shutdown before SIGKILL arrives
 8. **Test shutdown behavior**: Ensure in-flight requests complete properly
+
+## Related Skills
+
+- **salvo-tls-acme**: HTTPS server shutdown
+- **salvo-timeout**: Request timeouts during shutdown
+- **salvo-logging**: Log shutdown events

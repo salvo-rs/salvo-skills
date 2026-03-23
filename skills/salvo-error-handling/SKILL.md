@@ -342,3 +342,9 @@ async fn handler(req: &mut Request) -> Result<String, StatusError> {
 6. **Define domain errors**: Map business logic errors to appropriate HTTP codes
 7. **Validate at boundaries**: Catch bad input early with clear error messages
 8. **Use error chains**: anyhow/eyre for context, thiserror for type safety
+
+## Related Skills
+
+- **salvo-openapi**: Document error responses in OpenAPI
+- **salvo-logging**: Log and trace errors
+- **salvo-testing**: Test error handling behavior

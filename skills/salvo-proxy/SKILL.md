@@ -362,3 +362,9 @@ async fn main() {
 6. **Apply rate limiting**: Protect backends from overload
 7. **Use HTTPS between proxy and backends**: Secure internal traffic
 8. **Handle WebSocket upgrades**: Ensure protocol support
+
+## Related Skills
+
+- **salvo-rate-limiter**: Rate limit proxied requests
+- **salvo-auth**: Authenticate before proxying
+- **salvo-timeout**: Set timeouts for upstream requests

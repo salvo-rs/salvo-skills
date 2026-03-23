@@ -482,3 +482,8 @@ source.close();
 6. **Consider CORS**: SSE follows same-origin policy
 7. **Limit connections**: Each client uses a connection; consider connection limits
 8. **Use broadcast channels**: Efficiently send same data to multiple clients
+
+## Related Skills
+
+- **salvo-websocket**: WebSocket for bidirectional communication
+- **salvo-realtime**: Overview of real-time communication options

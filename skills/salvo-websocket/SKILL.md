@@ -474,3 +474,9 @@ async fn send_json<T: Serialize>(ws: &mut WebSocket, msg: &T) -> Result<(), salv
 6. **Use JSON for structured data**: Makes debugging easier
 7. **Clean up on disconnect**: Remove users from rooms/lists
 8. **Consider backpressure**: Handle slow consumers appropriately
+
+## Related Skills
+
+- **salvo-sse**: Server-Sent Events for unidirectional updates
+- **salvo-realtime**: Overview of real-time communication options
+- **salvo-auth**: Authenticate WebSocket connections

@@ -432,3 +432,9 @@ async fn main() {
 6. **Security**: Don't expose sensitive files, check paths
 7. **Directory listing**: Disable in production unless intentional
 8. **Multiple directories**: Use fallback order for themes/overrides
+
+## Related Skills
+
+- **salvo-file-handling**: Handle file uploads and downloads
+- **salvo-compression**: Compress static file responses
+- **salvo-caching**: Cache headers for static assets

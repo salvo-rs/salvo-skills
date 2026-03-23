@@ -207,3 +207,9 @@ serde_json = "1"
 4. Handle errors with Result types
 5. Use `TcpListener` for basic HTTP servers
 6. Extract common logic into middleware using `hoop()`
+
+## Related Skills
+
+- **salvo-routing**: Advanced routing configuration and path parameters
+- **salvo-middleware**: Add middleware for logging, auth, and CORS
+- **salvo-error-handling**: Graceful error handling patterns

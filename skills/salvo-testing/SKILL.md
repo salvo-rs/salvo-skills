@@ -369,3 +369,9 @@ async fn test_full_crud() {
 8. Mock external dependencies
 9. Use test fixtures for complex data
 10. Run tests in parallel when possible
+
+## Related Skills
+
+- **salvo-error-handling**: Test error responses
+- **salvo-auth**: Test authenticated endpoints
+- **salvo-database**: Integration testing with databases

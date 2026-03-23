@@ -264,3 +264,8 @@ async fn cors_debug(req: &Request) {
 5. **Set appropriate max_age**: Balance security and performance
 6. **Apply security headers**: Add CSP, HSTS, X-Frame-Options
 7. **Test preflight requests**: Verify OPTIONS requests work correctly
+
+## Related Skills
+
+- **salvo-csrf**: CSRF protection for cross-origin forms
+- **salvo-auth**: CORS for authenticated API endpoints

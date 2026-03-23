@@ -369,3 +369,8 @@ async fn main() {
 6. **Different limits per endpoint**: Not all endpoints need same limits
 7. **Test under load**: Verify limits work as expected
 8. **Leave headroom**: Don't set limit exactly at resource maximum
+
+## Related Skills
+
+- **salvo-rate-limiter**: Rate limiting for request frequency
+- **salvo-timeout**: Combine with request timeouts
