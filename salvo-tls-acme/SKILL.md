@@ -5,346 +5,196 @@ version: 0.89.3
 tags: [security, tls, https, acme, certificate]
 ---
 
-# Salvo TLS and ACME Configuration
+# Salvo TLS and ACME
 
-This skill helps configure TLS/HTTPS and automatic certificate management in Salvo applications.
-
-## TLS with Rustls
-
-### Setup
+## Static TLS with Rustls
 
 ```toml
 [dependencies]
 salvo = { version = "0.89.3", features = ["rustls"] }
 ```
 
-### Basic TLS Configuration
-
 ```rust
 use salvo::prelude::*;
 use salvo::conn::rustls::{Keycert, RustlsConfig};
 
 #[handler]
-async fn hello() -> &'static str {
-    "Hello over HTTPS!"
-}
+async fn hello() -> &'static str { "Hello HTTPS" }
 
 #[tokio::main]
 async fn main() {
     let router = Router::new().get(hello);
 
-    // Load certificate and private key
     let config = RustlsConfig::new(
         Keycert::new()
-            .cert_from_path("certs/cert.pem")
-            .unwrap()
-            .key_from_path("certs/key.pem")
-            .unwrap()
+            .cert_from_path("certs/cert.pem").unwrap()
+            .key_from_path("certs/key.pem").unwrap()
     );
 
-    let acceptor = TcpListener::new("0.0.0.0:443")
-        .rustls(config)
-        .bind()
-        .await;
-
+    let acceptor = TcpListener::new("0.0.0.0:443").rustls(config).bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
 
-### Certificate from Memory
+Loading from memory:
 
 ```rust
-use salvo::conn::rustls::{Keycert, RustlsConfig};
-
-let cert_pem = include_bytes!("../certs/cert.pem");
-let key_pem = include_bytes!("../certs/key.pem");
-
-let config = RustlsConfig::new(
-    Keycert::new()
-        .cert(cert_pem.to_vec())
-        .key(key_pem.to_vec())
-);
+let cert = include_bytes!("../certs/cert.pem");
+let key = include_bytes!("../certs/key.pem");
+let config = RustlsConfig::new(Keycert::new().cert(cert.as_slice()).key(key.as_slice()));
 ```
 
-## ACME (Let's Encrypt) Auto-Certificates
+HTTP/2 is enabled automatically with Rustls.
 
-### Setup
+## ACME (Let's Encrypt)
 
 ```toml
 [dependencies]
 salvo = { version = "0.89.3", features = ["acme"] }
 ```
 
-### HTTP-01 Challenge
+ACME is an extension trait on `TcpListener` — there is NO `AcmeListener::builder()` constructor. Use `.acme()` on the listener and chain config.
+
+### HTTP-01 challenge
+
+HTTP-01 needs port 80 open for challenge responses. `http01_challenge(&mut router)` mounts the challenge handler into your router automatically.
 
 ```rust
 use salvo::prelude::*;
-use salvo::conn::acme::{AcmeConfig, AcmeListener, ChallengeType};
 
 #[handler]
-async fn hello() -> &'static str {
-    "Hello with auto-certificate!"
-}
+async fn hello() -> &'static str { "Hello Let's Encrypt" }
 
 #[tokio::main]
 async fn main() {
-    let router = Router::new().get(hello);
+    let mut router = Router::new().get(hello);
 
-    // Configure ACME
-    let config = AcmeConfig::builder()
-        .domains(["example.com", "www.example.com"])
-        .contacts(["mailto:admin@example.com"])
-        .challenge_type(ChallengeType::Http01)
-        .cache_path("./acme_cache")
-        .build()
-        .unwrap();
+    let listener = TcpListener::new("0.0.0.0:443")
+        .acme()
+        .cache_path("/tmp/letsencrypt")
+        .add_domain("example.com")
+        .http01_challenge(&mut router);
 
-    // ACME listener handles HTTP-01 challenges and serves HTTPS
-    let acceptor = AcmeListener::builder()
-        .acme_config(config)
-        .bind("0.0.0.0:443")
-        .await;
-
+    // Bind 443 (TLS) + 80 (challenges) together.
+    let acceptor = listener.join(TcpListener::new("0.0.0.0:80")).bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
 
-### TLS-ALPN-01 Challenge
+### TLS-ALPN-01 challenge
 
-For environments where port 80 is not available:
-
-```rust
-use salvo::conn::acme::{AcmeConfig, AcmeListener, ChallengeType};
-
-let config = AcmeConfig::builder()
-    .domains(["example.com"])
-    .contacts(["mailto:admin@example.com"])
-    .challenge_type(ChallengeType::TlsAlpn01)
-    .cache_path("./acme_cache")
-    .build()
-    .unwrap();
-```
-
-## Force HTTPS Redirect
+No port 80 required; challenges run over the TLS handshake on 443.
 
 ```rust
-use salvo::prelude::*;
-
-#[handler]
-async fn force_https(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
-    // Check if request is HTTP (not HTTPS)
-    if req.uri().scheme_str() == Some("http") {
-        let host = req.header::<String>("Host").unwrap_or_default();
-        let path = req.uri().path_and_query().map(|p| p.as_str()).unwrap_or("/");
-        let https_url = format!("https://{}{}", host, path);
-
-        res.status_code(StatusCode::MOVED_PERMANENTLY);
-        res.headers_mut().insert("Location", https_url.parse().unwrap());
-        ctrl.skip_rest();
-        return;
-    }
-
-    ctrl.call_next(req, depot, res).await;
-}
+let acceptor = TcpListener::new("0.0.0.0:443")
+    .acme()
+    .cache_path("/tmp/letsencrypt")
+    .add_domain("example.com")
+    // .tls_alpn01_challenge() is the default; call explicitly to be clear
+    .bind()
+    .await;
 ```
 
-## HTTP and HTTPS on Different Ports
+### Staging directory (testing)
+
+Let's Encrypt staging avoids production rate limits while testing:
 
 ```rust
-use salvo::prelude::*;
-use salvo::conn::rustls::{Keycert, RustlsConfig};
+use salvo::conn::acme::{AcmeListener, LETS_ENCRYPT_STAGING};
 
-#[tokio::main]
-async fn main() {
-    let router = Router::new().get(hello);
-
-    // HTTPS on 443
-    let tls_config = RustlsConfig::new(
-        Keycert::new()
-            .cert_from_path("certs/cert.pem").unwrap()
-            .key_from_path("certs/key.pem").unwrap()
-    );
-
-    let https_acceptor = TcpListener::new("0.0.0.0:443")
-        .rustls(tls_config)
-        .bind()
-        .await;
-
-    // HTTP on 80 (for redirects or ACME challenges)
-    let http_acceptor = TcpListener::new("0.0.0.0:80")
-        .bind()
-        .await;
-
-    // Run both servers
-    tokio::join!(
-        Server::new(https_acceptor).serve(router.clone()),
-        Server::new(http_acceptor).serve(Router::new().hoop(redirect_to_https)),
-    );
-}
-
-#[handler]
-async fn redirect_to_https(req: &mut Request, res: &mut Response) {
-    let host = req.header::<String>("Host").unwrap_or_default();
-    let path = req.uri().path();
-    res.render(salvo::writing::Redirect::permanent(format!("https://{}{}", host, path)));
-}
+let listener = TcpListener::new("0.0.0.0:443")
+    .acme()
+    .directory("letsencrypt-staging", LETS_ENCRYPT_STAGING)
+    .cache_path("/tmp/letsencrypt-staging")
+    .add_domain("example.com")
+    .http01_challenge(&mut router);
 ```
 
-## Certificate Hot Reload
+Note: use `.directory(name, url)` — there is no `.directory_url(...)` method. Use `.http01_challenge(&mut router)` / `.tls_alpn01_challenge()` / `.dns01_challenge(solver)` — there is no `.challenge_type(...)` method.
+
+### Multiple domains and contacts
 
 ```rust
-use salvo::prelude::*;
-use salvo::conn::rustls::{Keycert, RustlsConfig};
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-// Reload certificates without restarting
-async fn reload_certificates(config: Arc<RwLock<RustlsConfig>>) {
-    let new_config = RustlsConfig::new(
-        Keycert::new()
-            .cert_from_path("certs/cert.pem").unwrap()
-            .key_from_path("certs/key.pem").unwrap()
-    );
-
-    let mut guard = config.write().await;
-    *guard = new_config;
-}
+.add_domain("example.com")
+.add_domain("www.example.com")
+.add_contact("mailto:admin@example.com")
 ```
 
-## HTTP/2 Support
-
-HTTP/2 is automatically enabled when using Rustls:
+Or pass a `Vec`:
 
 ```rust
-use salvo::prelude::*;
-use salvo::conn::rustls::{Keycert, RustlsConfig};
-
-// HTTP/2 is enabled by default with TLS
-let config = RustlsConfig::new(
-    Keycert::new()
-        .cert_from_path("certs/cert.pem").unwrap()
-        .key_from_path("certs/key.pem").unwrap()
-);
+.domains(vec!["example.com".into(), "www.example.com".into()])
+.contacts(vec!["mailto:admin@example.com".into()])
 ```
 
-## HTTP/3 (QUIC) Support
+### Key types
+
+```rust
+use salvo::conn::acme::KeyType;
+.key_type(KeyType::EcdsaP256)  // default; also Rsa2048/4096, Ed25519, ...
+```
+
+## Force HTTP-to-HTTPS redirect
+
+Use the built-in `ForceHttps` middleware (needs `force-https` feature) instead of writing a custom handler:
 
 ```toml
-[dependencies]
+salvo = { version = "0.89.3", features = ["rustls", "force-https"] }
+```
+
+```rust
+use salvo::prelude::*;
+
+let service = Service::new(router).hoop(ForceHttps::new().https_port(443));
+
+let acceptor = TcpListener::new("0.0.0.0:443")
+    .rustls(tls_config)
+    .join(TcpListener::new("0.0.0.0:80"))
+    .bind()
+    .await;
+Server::new(acceptor).serve(service).await;
+```
+
+## HTTP/3 (QUIC)
+
+```toml
 salvo = { version = "0.89.3", features = ["quinn"] }
 ```
 
-```rust
-use salvo::prelude::*;
-use salvo::conn::quinn::QuinnListener;
-
-#[tokio::main]
-async fn main() {
-    let router = Router::new().get(hello);
-
-    let acceptor = QuinnListener::builder()
-        .cert_path("certs/cert.pem")
-        .key_path("certs/key.pem")
-        .bind("0.0.0.0:443")
-        .await;
-
-    Server::new(acceptor).serve(router).await;
-}
-```
-
-## Security Headers for HTTPS
+`QuinnListener` takes a quinn `ServerConfig` (built from `RustlsConfig`) and an address — NOT a `cert_path`/`key_path` builder.
 
 ```rust
 use salvo::prelude::*;
+use salvo::conn::rustls::{Keycert, RustlsConfig};
 
-#[handler]
-async fn security_headers(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
-    // HTTP Strict Transport Security
-    res.headers_mut().insert(
-        "Strict-Transport-Security",
-        "max-age=31536000; includeSubDomains; preload".parse().unwrap()
-    );
+let config = RustlsConfig::new(
+    Keycert::new()
+        .cert(include_bytes!("../certs/cert.pem").as_slice())
+        .key(include_bytes!("../certs/key.pem").as_slice())
+);
 
-    // Prevent mixed content
-    res.headers_mut().insert(
-        "Content-Security-Policy",
-        "upgrade-insecure-requests".parse().unwrap()
-    );
-
-    ctrl.call_next(req, depot, res).await;
-}
+let listener = TcpListener::new(("0.0.0.0", 443)).rustls(config.clone());
+let acceptor = QuinnListener::new(config.build_quinn_config().unwrap(), ("0.0.0.0", 443))
+    .join(listener)
+    .bind()
+    .await;
+Server::new(acceptor).serve(router).await;
 ```
 
-## Complete ACME Example
+## Security headers (HSTS)
 
 ```rust
-use salvo::prelude::*;
-use salvo::conn::acme::{AcmeConfig, AcmeListener, ChallengeType};
-
 #[handler]
-async fn hello() -> &'static str {
-    "Hello with Let's Encrypt!"
-}
-
-#[handler]
-async fn security_headers(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
+async fn hsts(_req: &mut Request, _depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
     res.headers_mut().insert(
-        "Strict-Transport-Security",
-        "max-age=31536000; includeSubDomains".parse().unwrap()
+        "strict-transport-security",
+        "max-age=31536000; includeSubDomains; preload".parse().unwrap(),
     );
-    ctrl.call_next(req, depot, res).await;
-}
-
-#[tokio::main]
-async fn main() {
-    let router = Router::new()
-        .hoop(security_headers)
-        .get(hello);
-
-    let acme_config = AcmeConfig::builder()
-        .domains(["example.com", "www.example.com"])
-        .contacts(["mailto:admin@example.com"])
-        .challenge_type(ChallengeType::Http01)
-        .cache_path("./acme_cache")
-        .directory_url("https://acme-v02.api.letsencrypt.org/directory")
-        .build()
-        .unwrap();
-
-    let acceptor = AcmeListener::builder()
-        .acme_config(acme_config)
-        .bind("0.0.0.0:443")
-        .await;
-
-    println!("Server running on https://example.com");
-    Server::new(acceptor).serve(router).await;
+    ctrl.call_next(_req, _depot, res).await;
 }
 ```
-
-## Staging Environment
-
-Use Let's Encrypt staging for testing:
-
-```rust
-let acme_config = AcmeConfig::builder()
-    .domains(["example.com"])
-    .contacts(["mailto:admin@example.com"])
-    .directory_url("https://acme-staging-v02.api.letsencrypt.org/directory")  // Staging
-    .build()
-    .unwrap();
-```
-
-## Best Practices
-
-1. **Use ACME in production**: Automatic certificate renewal
-2. **Set HSTS header**: Force browsers to use HTTPS
-3. **Enable HTTP/2**: Better performance with TLS
-4. **Test with staging**: Use Let's Encrypt staging before production
-5. **Cache certificates**: Persist to disk for restart recovery
-6. **Monitor expiration**: Alert before certificates expire
-7. **Redirect HTTP to HTTPS**: Don't serve content over HTTP
-8. **Use strong ciphers**: Let Rustls handle cipher selection
 
 ## Related Skills
 
-- **salvo-graceful-shutdown**: Graceful shutdown for HTTPS servers
-- **salvo-cors**: Security headers for HTTPS
+- **salvo-graceful-shutdown**: graceful shutdown for HTTPS servers
+- **salvo-cors**: CORS and other security headers

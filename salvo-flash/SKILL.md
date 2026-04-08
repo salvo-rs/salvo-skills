@@ -7,26 +7,17 @@ tags: [advanced, flash-messages, notifications]
 
 # Salvo Flash Messages
 
-This skill helps implement flash messages in Salvo applications for displaying one-time notifications that survive redirects.
-
-## What are Flash Messages?
-
-Flash messages are temporary messages stored between requests, typically used to show feedback after form submissions or actions. They're automatically deleted after being displayed once.
-
-Common use cases:
-- "Successfully logged in!"
-- "Item added to cart"
-- "Error: Invalid email format"
-- "Profile updated successfully"
-
-## Setup
-
 ```toml
 [dependencies]
 salvo = { version = "0.89.3", features = ["flash"] }
 ```
 
-## Basic Flash Messages with Cookie Store
+`FlashHandler` middleware stores messages between requests. The set
+(outgoing) is written by the current handler, the previous request's messages
+are loaded into the "incoming" slot before handlers run, and the old entries
+are cleared automatically after display.
+
+## Cookie store
 
 ```rust
 use std::fmt::Write;
@@ -35,30 +26,21 @@ use salvo::prelude::*;
 
 #[handler]
 async fn set_flash(depot: &mut Depot, res: &mut Response) {
-    // Get outgoing flash and add messages
     let flash = depot.outgoing_flash_mut();
     flash.info("Operation completed successfully!");
     flash.debug("Debug information here");
-
-    // Redirect to show the message
     res.render(Redirect::other("/show"));
 }
 
 #[handler]
 async fn show_flash(depot: &mut Depot, res: &mut Response) {
     let mut output = String::new();
-
-    // Read incoming flash messages
     if let Some(flash) = depot.incoming_flash() {
-        for message in flash.iter() {
-            writeln!(output, "[{}] {}", message.level, message.value).unwrap();
+        for msg in flash.iter() {
+            writeln!(output, "[{}] {}", msg.level, msg.value).unwrap();
         }
     }
-
-    if output.is_empty() {
-        output = "No flash messages".to_string();
-    }
-
+    if output.is_empty() { output.push_str("No flash messages"); }
     res.render(Text::Plain(output));
 }
 
@@ -74,51 +56,78 @@ async fn main() {
 }
 ```
 
-## Flash Message Levels
+Note `incoming_flash` takes `&mut Depot`, so any helper that reads flash must
+also take `&mut Depot`.
+
+## Message levels
+
+Five levels on `Flash` (chainable `&mut Self` setters):
 
 ```rust
-use salvo::flash::FlashDepotExt;
+let flash = depot.outgoing_flash_mut();
+flash.debug("...").info("...").success("...").warning("...").error("...");
+```
 
-#[handler]
-async fn add_messages(depot: &mut Depot, res: &mut Response) {
-    let flash = depot.outgoing_flash_mut();
+`FlashLevel` is an **enum**, not a `String`. Match on the variants (it implements
+`Display` / `Debug` as the lowercase name), or call `.to_str()`:
 
-    // Different message levels
-    flash.debug("Debug message");     // For debugging
-    flash.info("Info message");       // General information
-    flash.success("Success message"); // Success notifications
-    flash.warning("Warning message"); // Warnings
-    flash.error("Error message");     // Error notifications
+```rust
+use salvo::flash::FlashLevel;
 
-    res.render(Redirect::other("/"));
+for msg in flash.iter() {
+    let class = match msg.level {
+        FlashLevel::Success => "alert-success",
+        FlashLevel::Error   => "alert-error",
+        FlashLevel::Warning => "alert-warning",
+        FlashLevel::Info    => "alert-info",
+        FlashLevel::Debug   => "alert-debug",
+    };
+    println!("<div class=\"{class}\">{}</div>", msg.value);
 }
 ```
 
-## Flash with Session Store
+`msg.level.as_str()` does NOT exist — use `to_str()` or the `Display` impl.
 
-For larger messages or when cookies aren't suitable:
+## `CookieStore` configuration
+
+Builders on `CookieStore` (all `#[must_use]`): `name`, `max_age`, `same_site`,
+`http_only`, `path`. Defaults: name `"salvo.flash"`, `max_age = 60s`,
+`SameSite::Lax`, `http_only = true`, `path = "/"`.
 
 ```rust
-use salvo::flash::{SessionStore, FlashDepotExt};
+use salvo::http::cookie::{time::Duration, SameSite};
+
+let store = CookieStore::new()
+    .name("app.flash")
+    .max_age(Duration::seconds(300))
+    .same_site(SameSite::Strict)
+    .path("/app");
+
+let router = Router::new().hoop(store.into_handler());
+```
+
+## Session store
+
+When messages are too large for a cookie, use `SessionStore` (requires a
+`SessionHandler` in front of it).
+
+```rust
+use salvo::flash::{FlashDepotExt, SessionStore};
 use salvo::session::{CookieStore as SessionCookieStore, SessionHandler};
 use salvo::prelude::*;
 
 #[tokio::main]
 async fn main() {
-    // Session handler is required for session-based flash
-    let session_handler = SessionHandler::builder(
+    let session = SessionHandler::builder(
         SessionCookieStore::new(),
         b"secretabsecretabsecretabsecretabsecretabsecretabsecretabsecretab",
     )
     .build()
     .unwrap();
 
-    // Flash store using sessions
-    let flash_handler = SessionStore::new().into_handler();
-
     let router = Router::new()
-        .hoop(session_handler)   // Session first
-        .hoop(flash_handler)     // Then flash
+        .hoop(session)                         // session first
+        .hoop(SessionStore::new().into_handler())  // then flash
         .push(Router::with_path("set").get(set_flash))
         .push(Router::with_path("show").get(show_flash));
 
@@ -127,61 +136,53 @@ async fn main() {
 }
 ```
 
-## Form Submission with Flash
+## Filtering by minimum level
+
+`FlashHandler::minimum_level(level)` drops outgoing messages below the given
+level (useful in production to suppress debug noise):
 
 ```rust
-use salvo::flash::{CookieStore, FlashDepotExt};
+use salvo::flash::{CookieStore, FlashHandler, FlashLevel};
+
+let mut handler = FlashHandler::new(CookieStore::new());
+handler.minimum_level(FlashLevel::Warning);
+let router = Router::new().hoop(handler);
+```
+
+## Form submission (Post-Redirect-Get)
+
+```rust
+use salvo::flash::{CookieStore, FlashDepotExt, FlashLevel};
 use salvo::prelude::*;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
-struct ContactForm {
-    name: String,
-    email: String,
-    message: String,
-}
+struct ContactForm { name: String, email: String, message: String }
 
 #[handler]
 async fn show_form(depot: &mut Depot, res: &mut Response) {
-    // Check for flash messages
-    let mut flash_html = String::new();
+    let mut alerts = String::new();
     if let Some(flash) = depot.incoming_flash() {
         for msg in flash.iter() {
-            let class = match msg.level.as_str() {
-                "success" => "alert-success",
-                "error" => "alert-error",
-                "warning" => "alert-warning",
+            let class = match msg.level {
+                FlashLevel::Success => "alert-success",
+                FlashLevel::Error   => "alert-error",
+                FlashLevel::Warning => "alert-warning",
                 _ => "alert-info",
             };
-            flash_html.push_str(&format!(
-                r#"<div class="{}">{}</div>"#,
-                class, msg.value
-            ));
+            alerts.push_str(&format!(r#"<div class="{class}">{}</div>"#, msg.value));
         }
     }
-
     res.render(Text::Html(format!(r#"
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <style>
-                .alert-success {{ background: #d4edda; padding: 10px; margin: 10px 0; }}
-                .alert-error {{ background: #f8d7da; padding: 10px; margin: 10px 0; }}
-                .alert-warning {{ background: #fff3cd; padding: 10px; margin: 10px 0; }}
-                .alert-info {{ background: #d1ecf1; padding: 10px; margin: 10px 0; }}
-            </style>
-        </head>
-        <body>
-            {flash_html}
-            <h1>Contact Us</h1>
-            <form method="post" action="/contact">
-                <p><input type="text" name="name" placeholder="Name" required /></p>
-                <p><input type="email" name="email" placeholder="Email" required /></p>
-                <p><textarea name="message" placeholder="Message" required></textarea></p>
-                <button type="submit">Send</button>
-            </form>
-        </body>
-        </html>
+        <!DOCTYPE html><html><body>
+        {alerts}
+        <form method="post" action="/contact">
+            <input name="name" required />
+            <input type="email" name="email" required />
+            <textarea name="message" required></textarea>
+            <button type="submit">Send</button>
+        </form>
+        </body></html>
     "#)));
 }
 
@@ -189,20 +190,14 @@ async fn show_form(depot: &mut Depot, res: &mut Response) {
 async fn handle_form(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     match req.parse_form::<ContactForm>().await {
         Ok(form) => {
-            // Process the form...
-            println!("Received message from: {} <{}>", form.name, form.email);
-
-            // Success flash
-            depot.outgoing_flash_mut()
-                .success("Thank you! Your message has been sent.");
+            // ... process form ...
+            let _ = form;
+            depot.outgoing_flash_mut().success("Thank you! Your message has been sent.");
         }
         Err(e) => {
-            // Error flash
-            depot.outgoing_flash_mut()
-                .error(format!("Error: {}", e));
+            depot.outgoing_flash_mut().error(format!("Error: {e}"));
         }
     }
-
     res.render(Redirect::other("/contact"));
 }
 
@@ -210,212 +205,30 @@ async fn handle_form(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 async fn main() {
     let router = Router::new()
         .hoop(CookieStore::new().into_handler())
-        .push(
-            Router::with_path("contact")
-                .get(show_form)
-                .post(handle_form)
-        );
+        .push(Router::with_path("contact").get(show_form).post(handle_form));
 
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
 
-## Multiple Flash Messages
+## JSON rendering
 
 ```rust
-#[handler]
-async fn process_action(depot: &mut Depot, res: &mut Response) {
-    let flash = depot.outgoing_flash_mut();
-
-    // Add multiple messages
-    flash.info("Processing started...");
-    flash.success("Step 1 completed");
-    flash.success("Step 2 completed");
-    flash.warning("Step 3 had minor issues but continued");
-    flash.success("All steps completed!");
-
-    res.render(Redirect::other("/results"));
-}
-
-#[handler]
-async fn show_results(depot: &mut Depot, res: &mut Response) {
-    let mut html = String::from("<h1>Results</h1><ul>");
-
-    if let Some(flash) = depot.incoming_flash() {
-        for msg in flash.iter() {
-            html.push_str(&format!(
-                "<li><strong>{}:</strong> {}</li>",
-                msg.level, msg.value
-            ));
-        }
-    }
-
-    html.push_str("</ul>");
-    res.render(Text::Html(html));
-}
-```
-
-## Flash with CRUD Operations
-
-```rust
-use salvo::flash::FlashDepotExt;
-use salvo::prelude::*;
-
-#[handler]
-async fn create_item(depot: &mut Depot, res: &mut Response) {
-    // Create item logic...
-    let item_id = 123;
-
-    depot.outgoing_flash_mut()
-        .success(format!("Item #{} created successfully!", item_id));
-
-    res.render(Redirect::other("/items"));
-}
-
-#[handler]
-async fn update_item(depot: &mut Depot, res: &mut Response) {
-    // Update item logic...
-
-    depot.outgoing_flash_mut()
-        .success("Item updated successfully!");
-
-    res.render(Redirect::other("/items"));
-}
-
-#[handler]
-async fn delete_item(depot: &mut Depot, res: &mut Response) {
-    // Delete item logic...
-
-    depot.outgoing_flash_mut()
-        .info("Item has been deleted.");
-
-    res.render(Redirect::other("/items"));
-}
-
-#[handler]
-async fn list_items(depot: &mut Depot, res: &mut Response) {
-    let mut flash_messages = Vec::new();
-
-    if let Some(flash) = depot.incoming_flash() {
-        for msg in flash.iter() {
-            flash_messages.push(format!("[{}] {}", msg.level, msg.value));
-        }
-    }
-
-    // Render list with flash messages...
-    res.render(Json(serde_json::json!({
-        "flash": flash_messages,
-        "items": []
-    })));
-}
-```
-
-## Flash with JSON API
-
-For API responses that need flash-like behavior:
-
-```rust
-use salvo::flash::FlashDepotExt;
-use salvo::prelude::*;
-use serde::Serialize;
-
-#[derive(Serialize)]
-struct ApiResponse<T> {
-    success: bool,
-    data: Option<T>,
-    messages: Vec<FlashMessage>,
-}
-
-#[derive(Serialize)]
-struct FlashMessage {
-    level: String,
-    text: String,
-}
-
-#[handler]
-async fn api_create(depot: &mut Depot, res: &mut Response) {
-    // Store flash for potential redirect
-    depot.outgoing_flash_mut()
-        .success("Created successfully");
-
-    // Also return in JSON for AJAX requests
-    res.render(Json(ApiResponse {
-        success: true,
-        data: Some(serde_json::json!({"id": 1})),
-        messages: vec![
-            FlashMessage {
-                level: "success".to_string(),
-                text: "Created successfully".to_string(),
-            }
-        ],
-    }));
-}
-```
-
-## Rendering Flash Messages
-
-### As HTML Alerts
-
-```rust
-fn render_flash_html(depot: &Depot) -> String {
-    let mut html = String::new();
-
-    if let Some(flash) = depot.incoming_flash() {
-        html.push_str("<div class=\"flash-container\">");
-        for msg in flash.iter() {
-            let (class, icon) = match msg.level.as_str() {
-                "success" => ("flash-success", "✓"),
-                "error" => ("flash-error", "✗"),
-                "warning" => ("flash-warning", "⚠"),
-                "info" => ("flash-info", "ℹ"),
-                _ => ("flash-debug", "🔧"),
-            };
-            html.push_str(&format!(
-                r#"<div class="flash {}"><span>{}</span> {}</div>"#,
-                class, icon, msg.value
-            ));
-        }
-        html.push_str("</div>");
-    }
-
-    html
-}
-```
-
-### As JSON
-
-```rust
-fn flash_to_json(depot: &Depot) -> serde_json::Value {
+fn flash_to_json(depot: &mut Depot) -> serde_json::Value {
     let messages: Vec<_> = depot
         .incoming_flash()
         .map(|flash| {
-            flash.iter()
-                .map(|msg| {
-                    serde_json::json!({
-                        "level": msg.level,
-                        "message": msg.value
-                    })
-                })
+            flash
+                .iter()
+                .map(|m| serde_json::json!({ "level": m.level.to_str(), "message": m.value }))
                 .collect()
         })
         .unwrap_or_default();
-
     serde_json::json!({ "flash": messages })
 }
 ```
 
-## Best Practices
-
-1. **Use appropriate levels**: Match message importance to level (success, error, warning, info)
-2. **Keep messages brief**: Flash messages should be short and clear
-3. **Redirect after POST**: Use Post-Redirect-Get pattern with flash messages
-4. **Style by level**: Use different colors/icons for different message levels
-5. **Cookie store for simple cases**: Session store for larger/sensitive messages
-6. **Clear after display**: Flash messages auto-clear, don't display twice
-7. **Handle empty flash**: Check if flash exists before rendering
-8. **Escape HTML**: Sanitize message content if it includes user input
-
 ## Related Skills
 
-- **salvo-session**: Flash messages with session storage
+- **salvo-session**: Required backend for `SessionStore`

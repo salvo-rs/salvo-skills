@@ -7,217 +7,80 @@ tags: [core, routing, path-syntax, migration]
 
 # Salvo Path Parameter Syntax
 
-This skill explains the path parameter syntax changes in Salvo and provides migration guidance.
+Salvo 0.76+ uses curly-brace syntax `{...}` for path parameters. The old angle-bracket form `<...>` (pre-0.76) is removed and will not match.
 
-## Syntax Version History
-
-### Version 0.76 and Later (Current)
-
-Starting from Salvo **0.76**, path parameters use **curly braces `{}`** syntax:
+## Current syntax (0.76+)
 
 ```rust
-// Basic path parameter
-Router::with_path("users/{id}").get(get_user)
-
-// Typed parameter
-Router::with_path("users/{id:num}").get(get_user)
-
-// Regex constraint
-Router::with_path(r"users/{id|\d+}").get(get_user)
-
-// Single segment wildcard
-Router::with_path("files/{*}").get(handler)
-
-// Named single segment wildcard
-Router::with_path("files/{*filename}").get(handler)
-
-// Multi-segment wildcard (rest of path)
-Router::with_path("static/{**path}").get(serve_static)
+Router::with_path("users/{id}")                 // basic
+Router::with_path("users/{id:num}")             // typed (num|i32|i64|u32|u64)
+Router::with_path(r"users/{id|\d+}")            // regex
+Router::with_path("files/{*}")                  // single-segment wildcard
+Router::with_path("files/{*name}")              // named single-segment wildcard
+Router::with_path("static/{**path}")            // rest-of-path wildcard
 ```
 
-### Before Version 0.76 (Deprecated)
+## Migration from <> to {}
 
-In versions **before 0.76**, path parameters used **angle brackets `<>`** syntax:
+| Before 0.76 | 0.76+ |
+|---|---|
+| `<id>` | `{id}` |
+| `<id:num>` | `{id:num}` |
+| `<id\|\d+>` | `{id\|\d+}` |
+| `<*>` / `<*name>` | `{*}` / `{*name}` |
+| `<**>` / `<**path>` | `{**}` / `{**path}` |
 
+Mechanical substitution: `<` to `{`, `>` to `}` in every `with_path(...)` / `path(...)` argument. Update any tests asserting on path strings.
+
+BAD (pre-0.76, will not match in current Salvo):
 ```rust
-// Basic path parameter (DEPRECATED)
-Router::with_path("users/<id>").get(get_user)
-
-// Typed parameter (DEPRECATED)
-Router::with_path("users/<id:num>").get(get_user)
-
-// Regex constraint (DEPRECATED)
-Router::with_path(r"users/<id|\d+>").get(get_user)
-
-// Single segment wildcard (DEPRECATED)
-Router::with_path("files/<*>").get(handler)
-
-// Named single segment wildcard (DEPRECATED)
-Router::with_path("files/<*filename>").get(handler)
-
-// Multi-segment wildcard (DEPRECATED)
-Router::with_path("static/<**path>").get(serve_static)
+Router::with_path("users/<id>/posts/<**rest>")
 ```
 
-## Migration Guide
-
-### Quick Reference Table
-
-| Pattern Type | Before 0.76 (Deprecated) | 0.76+ (Current) |
-|--------------|--------------------------|-----------------|
-| Basic param | `<id>` | `{id}` |
-| Typed param | `<id:num>` | `{id:num}` |
-| Regex param | `<id\|\d+>` | `{id\|\d+}` |
-| Single wildcard | `<*>` | `{*}` |
-| Named wildcard | `<*name>` | `{*name}` |
-| Rest wildcard | `<**>` | `{**}` |
-| Named rest | `<**path>` | `{**path}` |
-
-### Migration Steps
-
-1. **Find all route definitions** using `<>` syntax
-2. **Replace angle brackets** with curly braces
-3. **Update tests** if they reference path patterns
-4. **Verify** all routes work correctly
-
-### Example Migration
-
-Before (deprecated):
+GOOD:
 ```rust
-let router = Router::new()
-    .push(
-        Router::with_path("api/v1")
-            .push(
-                Router::with_path("users")
-                    .get(list_users)
-                    .push(
-                        Router::with_path("<id>")
-                            .get(get_user)
-                            .delete(delete_user)
-                    )
-            )
-            .push(
-                Router::with_path("files/<**path>")
-                    .get(serve_file)
-            )
-    );
+Router::with_path("users/{id}/posts/{**rest}")
 ```
 
-After (current):
-```rust
-let router = Router::new()
-    .push(
-        Router::with_path("api/v1")
-            .push(
-                Router::with_path("users")
-                    .get(list_users)
-                    .push(
-                        Router::with_path("{id}")
-                            .get(get_user)
-                            .delete(delete_user)
-                    )
-            )
-            .push(
-                Router::with_path("files/{**path}")
-                    .get(serve_file)
-            )
-    );
-```
-
-## Parameter Types
-
-Both syntaxes support the same type constraints (shown in current `{}` syntax):
+## Parameter types
 
 ```rust
-// Numeric types
-Router::with_path("users/{id:num}")    // Any number
-Router::with_path("users/{id:i32}")    // 32-bit integer
-Router::with_path("users/{id:i64}")    // 64-bit integer
-Router::with_path("users/{id:u32}")    // Unsigned 32-bit
-Router::with_path("users/{id:u64}")    // Unsigned 64-bit
+Router::with_path("users/{id:num}")   // any integer
+Router::with_path("users/{id:i32}")   // signed 32-bit
+Router::with_path("users/{id:i64}")
+Router::with_path("users/{id:u32}")
+Router::with_path("users/{id:u64}")
 
-// Regex pattern
+// Regex: characters between `|` and `}` form the pattern
 Router::with_path(r"posts/{slug|[a-z0-9-]+}")
-
-// UUID pattern (using regex)
-Router::with_path(r"users/{id|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}")
+Router::with_path(r"users/{id|[0-9a-f-]{36}}")  // UUID
 ```
 
-## Accessing Parameters in Handlers
+Typed and regex parameters reject non-matching values at the routing layer (returns 404), so handlers can `unwrap`.
 
-Parameter access is the same regardless of syntax version:
+## Accessing params
 
 ```rust
 #[handler]
-async fn get_user(req: &mut Request) -> String {
-    // Get parameter as specific type
+async fn show(req: &mut Request) -> String {
     let id: i64 = req.param("id").unwrap();
-
-    // Or with explicit type annotation
-    let id = req.param::<i64>("id").unwrap();
-
-    format!("User ID: {}", id)
+    format!("id = {id}")
 }
 
 #[handler]
-async fn serve_file(req: &mut Request) -> String {
-    // Get wildcard path
-    let path: String = req.param("path").unwrap();
-    format!("Serving: {}", path)
+async fn serve(req: &mut Request) -> String {
+    let rest: String = req.param("path").unwrap();  // from {**path}
+    format!("serving {rest}")
 }
 ```
 
-## Common Mistakes
+`req.param::<T>(name)` returns `Option<T>` and deserializes via serde.
 
-### Using Wrong Syntax for Version
+## Gotchas
 
-```rust
-// ERROR: Using <> in Salvo 0.76+
-Router::with_path("users/<id>")  // Won't match!
-
-// CORRECT: Use {} in Salvo 0.76+
-Router::with_path("users/{id}")
-```
-
-### Mixing Syntaxes
-
-```rust
-// ERROR: Mixed syntax
-Router::with_path("users/{id}/posts/<post_id>")  // Won't work!
-
-// CORRECT: Consistent syntax
-Router::with_path("users/{id}/posts/{post_id}")
-```
-
-## Version Detection
-
-Check your Salvo version in `Cargo.toml`:
-
-```toml
-[dependencies]
-# Version 0.76+ uses {} syntax
-salvo = "0.76"  # First version with {} syntax
-
-# Version 0.75 and earlier uses <> syntax (deprecated)
-salvo = "0.75"  # Uses <> syntax (deprecated)
-```
-
-For the latest version, always use `{}` syntax:
-
-```toml
-[dependencies]
-salvo = "0.89.3"  # Current stable - uses {} syntax
-```
-
-Note: The `{}` syntax was introduced in version 0.76 and is used in all versions since then.
-
-## Best Practices
-
-1. **Always use `{}` syntax** for new projects
-2. **Migrate existing projects** to `{}` syntax when updating Salvo
-3. **Use typed parameters** when possible for automatic validation
-4. **Use regex constraints** for complex validation requirements
-5. **Name your wildcards** for clarity (`{**path}` instead of `{**}`)
+- Do not mix syntaxes: `"users/{id}/posts/<pid>"` will not compile-error but the `<pid>` segment is treated as a literal.
+- Wildcards `{**}` are greedy and capture trailing slashes — name them for clarity: `{**path}`.
+- `{*}` matches exactly one segment; `{**}` matches zero or more. Use `{*name}` when you need a single non-empty segment.
 
 ## Related Skills
 

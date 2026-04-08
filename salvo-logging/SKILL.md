@@ -7,10 +7,6 @@ tags: [operations, logging, tracing, observability]
 
 # Salvo Logging and Tracing
 
-This skill helps implement logging and tracing in Salvo applications for debugging and observability.
-
-## Setup
-
 ```toml
 [dependencies]
 salvo = { version = "0.89.3", features = ["logging"] }
@@ -18,34 +14,19 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ```
 
-## Basic Request Logging
+## Logger middleware
+
+`salvo::logging::Logger` emits a `tracing` span per request with `remote_addr`, `version`, `method`, `path`, and response `status` + `duration`. It must be installed on a `Service` (not a `Router`) so it wraps the catcher and sees the final status:
 
 ```rust
 use salvo::logging::Logger;
 use salvo::prelude::*;
 
-#[handler]
-async fn hello() -> &'static str {
-    "Hello, World!"
-}
-
-#[handler]
-async fn error() -> StatusError {
-    StatusError::bad_request()
-        .brief("Bad request error")
-        .detail("The request was malformed.")
-}
-
 #[tokio::main]
 async fn main() {
-    // Initialize tracing subscriber
     tracing_subscriber::fmt().init();
 
-    let router = Router::new()
-        .get(hello)
-        .push(Router::with_path("error").get(error));
-
-    // Apply Logger to the service
+    let router = Router::new().get(hello);
     let service = Service::new(router).hoop(Logger::new());
 
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
@@ -53,439 +34,175 @@ async fn main() {
 }
 ```
 
-## Custom Log Format
+`Logger::new().log_status_error(false)` disables auto-logging of `StatusError` bodies (on by default).
+
+## Custom request logger
+
+When `Logger` is not enough, write a handler that measures time around `call_next`:
 
 ```rust
 use salvo::prelude::*;
-use tracing::info;
 use std::time::Instant;
+use tracing::info;
 
 #[handler]
 async fn request_logger(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-    ctrl: &mut FlowCtrl,
+    req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl,
 ) {
     let start = Instant::now();
     let method = req.method().clone();
     let path = req.uri().path().to_string();
-    let remote_addr = req.remote_addr().map(|a| a.to_string());
 
-    // Call next handlers
     ctrl.call_next(req, depot, res).await;
 
-    let duration = start.elapsed();
-    let status = res.status_code().unwrap_or(StatusCode::OK);
-
     info!(
-        method = %method,
-        path = %path,
-        status = %status.as_u16(),
-        duration_ms = %duration.as_millis(),
-        remote_addr = ?remote_addr,
-        "Request completed"
+        %method,
+        %path,
+        status = res.status_code.map(|s| s.as_u16()).unwrap_or(0),
+        duration_ms = start.elapsed().as_millis() as u64,
+        "request",
     );
 }
-
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt()
-        .with_target(false)
-        .with_level(true)
-        .init();
-
-    let router = Router::new()
-        .hoop(request_logger)
-        .get(hello);
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
 ```
 
-## Structured Logging with Tracing
+Gotcha: inside a handler `res.status_code` is a `Option<StatusCode>` field (not a method). If the handler hasn't set it, it's `None` until the catcher runs.
+
+## Structured logging in handlers
 
 ```rust
-use salvo::prelude::*;
-use tracing::{info, warn, error, debug, instrument, Level};
+use tracing::{debug, info, warn, instrument};
 
 #[handler]
-#[instrument(skip(req, res), fields(user_id))]
+#[instrument(skip_all, fields(user_id))]
 async fn get_user(req: &mut Request, res: &mut Response) {
     let user_id: u32 = req.param("id").unwrap_or(0);
-
-    // Record field value
     tracing::Span::current().record("user_id", user_id);
 
-    debug!("Fetching user from database");
-
+    debug!("fetching user");
     match fetch_user(user_id).await {
-        Ok(user) => {
-            info!(user_id = %user_id, "User found");
-            res.render(Json(user));
-        }
-        Err(e) => {
-            warn!(user_id = %user_id, error = %e, "User not found");
-            res.status_code(StatusCode::NOT_FOUND);
-        }
+        Ok(user) => { info!("found"); res.render(Json(user)); }
+        Err(e) => { warn!(error = %e, "not found"); res.status_code(StatusCode::NOT_FOUND); }
     }
 }
-
-async fn fetch_user(id: u32) -> Result<User, String> {
-    // Database lookup...
-    Ok(User { id, name: "Alice".to_string() })
-}
 ```
 
-## Log Levels and Filtering
+## Log filtering
+
+Configure levels via `RUST_LOG` (e.g. `RUST_LOG=info,salvo=debug,hyper=warn`):
 
 ```rust
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 fn init_logging() {
-    // Configure log levels via environment
-    // RUST_LOG=debug,salvo=info,hyper=warn
     let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| {
-            EnvFilter::new("info")
-                .add_directive("salvo=debug".parse().unwrap())
-                .add_directive("hyper=warn".parse().unwrap())
-        });
+        .unwrap_or_else(|_| EnvFilter::new("info,salvo=debug,hyper=warn"));
 
     tracing_subscriber::registry()
         .with(filter)
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-}
-
-#[tokio::main]
-async fn main() {
-    init_logging();
-
-    // Application code...
-}
-```
-
-## JSON Logging for Production
-
-```rust
-use tracing_subscriber::{fmt, EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
-
-fn init_json_logging() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(
-            fmt::layer()
-                .json()
-                .with_current_span(true)
-                .with_span_list(true)
-        )
+        .with(fmt::layer())
         .init();
 }
 ```
 
-Output example:
-```json
-{"timestamp":"2024-01-15T10:30:00Z","level":"INFO","target":"myapp","message":"Request completed","method":"GET","path":"/api/users","status":200,"duration_ms":15}
-```
-
-## File-Based Logging
+## JSON logging
 
 ```rust
-use tracing_subscriber::{fmt, EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+tracing_subscriber::registry()
+    .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+    .with(fmt::layer().json().with_current_span(true).with_span_list(true))
+    .init();
+```
+
+## File logging with rotation
+
+```toml
+tracing-appender = "0.2"
+```
+
+```rust
 use tracing_appender::{rolling, non_blocking};
 
-fn init_file_logging() {
-    // Create file appender with daily rotation
-    let file_appender = rolling::daily("logs", "app.log");
-    let (non_blocking_appender, _guard) = non_blocking(file_appender);
+let file_appender = rolling::daily("logs", "app.log");
+let (writer, _guard) = non_blocking(file_appender);
 
-    let filter = EnvFilter::new("info");
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(
-            fmt::layer()
-                .with_writer(non_blocking_appender)
-                .with_ansi(false)  // No colors in file
-        )
-        .with(
-            fmt::layer()  // Also log to console
-                .with_ansi(true)
-        )
-        .init();
-
-    // Note: Keep _guard alive for the lifetime of the application
-}
+tracing_subscriber::registry()
+    .with(EnvFilter::new("info"))
+    .with(fmt::layer().with_writer(writer).with_ansi(false))
+    .init();
+// _guard MUST be held for the process lifetime or buffered logs are dropped.
 ```
 
-## Request ID Tracking
+## Request ID
 
 ```rust
-use salvo::prelude::*;
 use uuid::Uuid;
-use tracing::{info, Span};
 
 #[handler]
 async fn add_request_id(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-    ctrl: &mut FlowCtrl,
+    req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl,
 ) {
-    // Generate or extract request ID
-    let request_id = req
-        .header::<String>("X-Request-ID")
+    let id = req.header::<String>("x-request-id")
         .unwrap_or_else(|| Uuid::new_v4().to_string());
+    depot.insert("request_id", id.clone());
+    res.headers_mut().insert("x-request-id", id.parse().unwrap());
 
-    // Store in depot for handlers
-    depot.insert("request_id", request_id.clone());
-
-    // Add to response header
-    res.headers_mut().insert(
-        "X-Request-ID",
-        request_id.parse().unwrap(),
-    );
-
-    // Create span with request ID
-    let span = tracing::info_span!(
-        "request",
-        request_id = %request_id,
-        method = %req.method(),
-        path = %req.uri().path()
-    );
-
+    let span = tracing::info_span!("request", request_id = %id, method = %req.method(), path = %req.uri().path());
     let _enter = span.enter();
     ctrl.call_next(req, depot, res).await;
 }
-
-#[handler]
-async fn my_handler(depot: &mut Depot) -> &'static str {
-    let request_id: &String = depot.get("request_id").unwrap();
-    info!(request_id = %request_id, "Processing request");
-    "Hello"
-}
 ```
 
-## Error Logging
+Salvo also ships `salvo::request_id::RequestId` middleware (feature `request-id`) that does this automatically.
+
+## Slow request alerting
 
 ```rust
-use salvo::prelude::*;
-use tracing::{error, warn};
-
 #[handler]
-async fn error_handler(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-    ctrl: &mut FlowCtrl,
-) {
-    ctrl.call_next(req, depot, res).await;
-
-    // Log errors after handler completes
-    if let Some(status) = res.status_code() {
-        if status.is_server_error() {
-            error!(
-                status = %status.as_u16(),
-                path = %req.uri().path(),
-                "Server error occurred"
-            );
-        } else if status.is_client_error() {
-            warn!(
-                status = %status.as_u16(),
-                path = %req.uri().path(),
-                "Client error"
-            );
-        }
-    }
-}
-```
-
-## Performance Metrics Logging
-
-```rust
-use salvo::prelude::*;
-use std::time::Instant;
-use tracing::info;
-
-#[handler]
-async fn metrics_logger(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-    ctrl: &mut FlowCtrl,
-) {
+async fn timing(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
     let start = Instant::now();
-    let path = req.uri().path().to_string();
-    let method = req.method().to_string();
-
     ctrl.call_next(req, depot, res).await;
-
-    let duration = start.elapsed();
-    let status = res.status_code().unwrap_or(StatusCode::OK);
-
-    // Log metrics
-    info!(
-        target: "metrics",
-        path = %path,
-        method = %method,
-        status = %status.as_u16(),
-        duration_ms = %duration.as_millis(),
-        duration_us = %duration.as_micros(),
-    );
-
-    // Alert on slow requests
-    if duration.as_millis() > 1000 {
-        tracing::warn!(
-            path = %path,
-            duration_ms = %duration.as_millis(),
-            "Slow request detected"
-        );
+    let ms = start.elapsed().as_millis();
+    if ms > 1000 {
+        tracing::warn!(path = %req.uri().path(), duration_ms = ms as u64, "slow request");
     }
 }
 ```
 
-## OpenTelemetry Integration
+## OpenTelemetry
+
+Salvo provides `salvo_otel` (feature `otel`) for trace propagation. For raw tracing-otel:
 
 ```toml
-[dependencies]
 opentelemetry = "0.22"
 opentelemetry-otlp = "0.15"
 tracing-opentelemetry = "0.23"
 ```
 
 ```rust
-use opentelemetry::global;
-use opentelemetry_otlp::WithExportConfig;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+let tracer = opentelemetry_otlp::new_pipeline()
+    .tracing()
+    .with_exporter(opentelemetry_otlp::new_exporter().tonic().with_endpoint("http://localhost:4317"))
+    .install_batch(opentelemetry_sdk::runtime::Tokio)
+    .unwrap();
 
-fn init_otel() {
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317")
-        )
-        .install_batch(opentelemetry_sdk::runtime::Tokio)
-        .unwrap();
+tracing_subscriber::registry()
+    .with(tracing_subscriber::fmt::layer())
+    .with(tracing_opentelemetry::layer().with_tracer(tracer))
+    .init();
 
-    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .with(otel_layer)
-        .init();
-}
-
-#[tokio::main]
-async fn main() {
-    init_otel();
-
-    // Application code...
-
-    // Shutdown tracer on exit
-    global::shutdown_tracer_provider();
-}
+// On shutdown:
+opentelemetry::global::shutdown_tracer_provider();
 ```
 
-## Complete Production Logging Setup
+## Gotchas
 
-```rust
-use salvo::logging::Logger;
-use salvo::prelude::*;
-use tracing::{info, Level};
-use tracing_subscriber::{
-    fmt, EnvFilter,
-    layer::SubscriberExt,
-    util::SubscriberInitExt,
-};
-use tracing_appender::rolling;
-use std::time::Instant;
-
-#[handler]
-async fn request_timing(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-    ctrl: &mut FlowCtrl,
-) {
-    let start = Instant::now();
-    ctrl.call_next(req, depot, res).await;
-
-    let duration = start.elapsed();
-    if duration.as_millis() > 500 {
-        tracing::warn!(
-            path = %req.uri().path(),
-            duration_ms = %duration.as_millis(),
-            "Slow request"
-        );
-    }
-}
-
-fn init_logging() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| {
-            EnvFilter::new("info")
-                .add_directive("salvo=info".parse().unwrap())
-        });
-
-    // File logging
-    let file_appender = rolling::daily("logs", "app.log");
-    let (file_writer, _guard) = tracing_appender::non_blocking(file_appender);
-
-    tracing_subscriber::registry()
-        .with(filter)
-        // Console logging (human-readable)
-        .with(
-            fmt::layer()
-                .with_target(true)
-                .with_level(true)
-        )
-        // File logging (JSON for parsing)
-        .with(
-            fmt::layer()
-                .json()
-                .with_writer(file_writer)
-        )
-        .init();
-}
-
-#[tokio::main]
-async fn main() {
-    init_logging();
-
-    info!("Starting server...");
-
-    let router = Router::new()
-        .hoop(request_timing)
-        .get(handler);
-
-    let service = Service::new(router).hoop(Logger::new());
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    info!("Server listening on 0.0.0.0:8080");
-    Server::new(acceptor).serve(service).await;
-}
-```
-
-## Best Practices
-
-1. **Use structured logging**: Key-value pairs are easier to parse and search
-2. **Include request context**: Request ID, user ID, path for correlation
-3. **Log at appropriate levels**: DEBUG for development, INFO for production
-4. **Use JSON in production**: Machine-parseable for log aggregation
-5. **Rotate log files**: Prevent disk space exhaustion
-6. **Include timing information**: Track request duration for performance monitoring
-7. **Don't log sensitive data**: Passwords, tokens, PII should never be logged
-8. **Use async/non-blocking**: Don't let logging slow down request handling
+- Install `Logger` on `Service`, not `Router` — otherwise it logs before the catcher rewrites the status and body.
+- `Logger` requires a `tracing` subscriber; without one, nothing is emitted.
+- `tracing-appender` writers must keep their `WorkerGuard` alive or pending log lines are discarded at shutdown.
+- Never log request bodies or headers like `Authorization` / `Cookie` unredacted.
 
 ## Related Skills
 
-- **salvo-error-handling**: Log and trace errors
-- **salvo-middleware**: Logging as middleware
-- **salvo-testing**: Verify logging in tests
+- **salvo-error-handling**: `Logger` auto-logs `StatusError` bodies.
+- **salvo-middleware**: Logger is just a hoop.
+- **salvo-testing**: `tracing-test` crate verifies log output.

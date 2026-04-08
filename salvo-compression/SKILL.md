@@ -7,261 +7,122 @@ tags: [performance, compression, gzip, brotli]
 
 # Salvo Response Compression
 
-This skill helps configure response compression in Salvo applications.
-
-## HTTP Compression Basics
-
-HTTP compression reduces response size by compressing content before sending. The process:
-
-1. Client sends `Accept-Encoding: gzip, deflate, br` header
-2. Server compresses response and sets `Content-Encoding: gzip` header
-3. Client automatically decompresses the response
-
-## Setup
-
 ```toml
 [dependencies]
 salvo = { version = "0.89.3", features = ["compression"] }
 ```
 
-## Basic Usage
+## Basic usage
+
+`Compression::new()` enables all four algorithms (brotli, zstd, gzip, deflate) at `Default` level, with `min_length = 1024` and a default text/* content-type allowlist.
 
 ```rust
 use salvo::prelude::*;
 use salvo::compression::Compression;
 
 #[handler]
-async fn large_response() -> String {
-    "This response will be compressed if the client supports it. ".repeat(100)
+async fn body() -> String {
+    "lorem ipsum ".repeat(200)
 }
 
 #[tokio::main]
 async fn main() {
-    let router = Router::new()
-        .hoop(Compression::new())  // Enable compression
-        .get(large_response);
-
+    let router = Router::new().hoop(Compression::new()).get(body);
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
 
-## Supported Algorithms
+## CompressionLevel
 
-Salvo supports four compression algorithms:
+```rust
+use salvo::compression::CompressionLevel;
 
-| Algorithm | Feature | Description |
-|-----------|---------|-------------|
-| **Gzip** | Default | Most widely supported, good balance |
-| **Brotli (br)** | Default | Best compression ratio, higher CPU |
-| **Zstd** | Default | Fast with good compression |
-| **Deflate** | Default | Legacy, rarely used alone |
+CompressionLevel::Fastest      // speed > ratio
+CompressionLevel::Default      // balanced
+CompressionLevel::Minsize      // best ratio, slowest  (NOT `Best`)
+CompressionLevel::Precise(6)   // algo-specific level
+```
 
-## Configuring Specific Algorithms
+GOTCHA: the variant is `Minsize`, not `Best`.
+
+## Selecting algorithms
+
+Enable/disable by name (each returns `Self`):
 
 ```rust
 use salvo::compression::{Compression, CompressionLevel};
 
 // Only gzip
-let gzip_only = Compression::new()
+let only_gzip = Compression::new()
+    .disable_all()
     .enable_gzip(CompressionLevel::Default);
 
-// Only brotli
-let brotli_only = Compression::new()
-    .enable_brotli(CompressionLevel::Best);
-
-// Multiple algorithms
-let multi = Compression::new()
-    .enable_gzip(CompressionLevel::Default)
-    .enable_brotli(CompressionLevel::Default)
-    .enable_zstd(CompressionLevel::Default);
+// Gzip + brotli, different levels
+let mixed = Compression::new()
+    .disable_all()
+    .enable_brotli(CompressionLevel::Minsize)
+    .enable_gzip(CompressionLevel::Fastest);
 ```
 
-## Compression Levels
+Available: `enable_gzip`, `enable_brotli`, `enable_zstd`, `enable_deflate` (plus matching `disable_*`).
+
+## min_length
 
 ```rust
-use salvo::compression::CompressionLevel;
-
-// Available levels
-CompressionLevel::Fastest  // Fastest speed, lower compression
-CompressionLevel::Default  // Balanced speed and compression
-CompressionLevel::Best     // Best compression, slower
-CompressionLevel::Precise(6)  // Exact level (algorithm-specific)
+Compression::new().min_length(2048);  // skip bodies smaller than 2KB
 ```
 
-### Level Selection Guide
+## content_types
 
-| Use Case | Recommended Level |
-|----------|-------------------|
-| Dynamic API responses | `Fastest` |
-| Static assets | `Best` |
-| General purpose | `Default` |
-
-## Minimum Response Size
-
-Small responses may become larger after compression. Set a minimum threshold:
+GOTCHA: `content_types` takes `&[mime::Mime]`, NOT `&[&str]`. `mime` is re-exported at `salvo::http::mime`.
 
 ```rust
-let compression = Compression::new()
-    .min_length(1024);  // Only compress responses > 1KB
+use salvo::compression::Compression;
+use salvo::http::mime;
+
+let comp = Compression::new().content_types(&[
+    mime::TEXT_HTML,
+    mime::TEXT_CSS,
+    mime::APPLICATION_JSON,
+    mime::APPLICATION_JAVASCRIPT,
+    "image/svg+xml".parse().unwrap(),
+]);
 ```
 
-## Content Type Filtering
+The default list already covers `text/*`, `application/javascript`, `application/json`, and `image/svg+xml` — only call `content_types` to restrict further.
 
-Only compress text-based content (default behavior):
+## Algorithm priority
+
+By default, if the client accepts multiple encodings, the algorithm with the highest client q-value wins. Set `force_priority(true)` to use server preference order (brotli > zstd > gzip > deflate as inserted by `new()`).
 
 ```rust
-let compression = Compression::new()
-    .content_types(vec![
-        "text/html",
-        "text/css",
-        "text/javascript",
-        "application/json",
-        "application/xml",
-        "image/svg+xml",
-    ]);
+Compression::new().force_priority(true);
 ```
 
-## Algorithm Priority
-
-When client supports multiple algorithms, set server preference:
+## Per-route compression
 
 ```rust
-let compression = Compression::new()
-    .force_priority(true);  // Use server's priority order
+let static_comp = Compression::new()
+    .disable_all()
+    .enable_brotli(CompressionLevel::Minsize)
+    .enable_gzip(CompressionLevel::Minsize);
 
-// Default priority: Brotli > Zstd > Gzip > Deflate
+let api_comp = Compression::new()
+    .disable_all()
+    .enable_gzip(CompressionLevel::Fastest)
+    .min_length(256);
+
+let router = Router::new()
+    .push(Router::with_path("static/{**path}").hoop(static_comp).get(StaticDir::new("./public")))
+    .push(Router::with_path("api/{**rest}").hoop(api_comp).get(api_handler));
 ```
 
-## Different Routes, Different Compression
+## Pre-compressed static assets
 
-```rust
-use salvo::compression::{Compression, CompressionLevel};
-use salvo::prelude::*;
-
-#[tokio::main]
-async fn main() {
-    // High compression for static assets
-    let static_compression = Compression::new()
-        .enable_brotli(CompressionLevel::Best)
-        .enable_gzip(CompressionLevel::Best);
-
-    // Fast compression for API
-    let api_compression = Compression::new()
-        .enable_gzip(CompressionLevel::Fastest)
-        .min_length(256);
-
-    let router = Router::new()
-        .push(
-            Router::with_path("static")
-                .hoop(static_compression)
-                .get(StaticDir::new("./public"))
-        )
-        .push(
-            Router::with_path("api")
-                .hoop(api_compression)
-                .get(api_handler)
-        );
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
-```
-
-## Pre-compressed Static Files
-
-For best performance, pre-compress static files at build time:
-
-```bash
-# Pre-compress with gzip
-gzip -k -9 ./public/bundle.js
-
-# Pre-compress with brotli
-brotli -k ./public/bundle.js
-```
-
-Then serve with static file handler that detects pre-compressed files.
-
-## Complete Example
-
-```rust
-use salvo::compression::{Compression, CompressionLevel};
-use salvo::prelude::*;
-use serde::Serialize;
-
-#[derive(Serialize)]
-struct LargeResponse {
-    items: Vec<String>,
-}
-
-#[handler]
-async fn large_json() -> Json<LargeResponse> {
-    Json(LargeResponse {
-        items: (0..1000).map(|i| format!("Item {}", i)).collect(),
-    })
-}
-
-#[handler]
-async fn html_page() -> Text<&'static str> {
-    Text::Html(r#"
-        <!DOCTYPE html>
-        <html>
-        <head><title>Compressed Page</title></head>
-        <body>
-            <h1>This page is compressed!</h1>
-            <p>The server compresses this HTML before sending it.</p>
-        </body>
-        </html>
-    "#)
-}
-
-#[tokio::main]
-async fn main() {
-    let compression = Compression::new()
-        .enable_gzip(CompressionLevel::Default)
-        .enable_brotli(CompressionLevel::Default)
-        .min_length(512)
-        .content_types(vec![
-            "text/html",
-            "text/css",
-            "application/json",
-            "application/javascript",
-        ]);
-
-    let router = Router::new()
-        .hoop(compression)
-        .push(Router::with_path("api/data").get(large_json))
-        .push(Router::with_path("page").get(html_page));
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
-```
-
-## Testing Compression
-
-```bash
-# Request with gzip support
-curl -H "Accept-Encoding: gzip" -v http://localhost:8080/api/data
-
-# Request with brotli support
-curl -H "Accept-Encoding: br" -v http://localhost:8080/api/data
-
-# Check response headers for Content-Encoding
-```
-
-## Best Practices
-
-1. **Use compression for text content**: HTML, CSS, JS, JSON, XML
-2. **Skip already compressed content**: JPEG, PNG, MP4, ZIP
-3. **Set minimum size threshold**: Avoid compressing tiny responses
-4. **Choose level based on content type**: Static = Best, Dynamic = Fastest
-5. **Pre-compress static assets**: Build-time compression for best performance
-6. **Monitor CPU usage**: High compression levels increase CPU load
-7. **Test with real clients**: Verify compression works end-to-end
-8. **Consider CDN compression**: CDNs often handle compression for you
+If you pre-compress files at build time (`gzip -k9 bundle.js`, `brotli -k bundle.js`), serve them with `StaticDir` which detects the pre-compressed variants automatically and serves them directly.
 
 ## Related Skills
 
-- **salvo-static-files**: Serve and compress static files
-- **salvo-caching**: Combine compression with caching
+- **salvo-static-files**: serve pre-compressed files
+- **salvo-caching**: combine with caching middleware

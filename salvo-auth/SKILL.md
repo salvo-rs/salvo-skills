@@ -7,11 +7,7 @@ tags: [security, authentication, jwt, basic-auth]
 
 # Salvo Authentication
 
-This skill helps implement authentication and authorization in Salvo applications.
-
 ## JWT Authentication
-
-### Setup
 
 ```toml
 [dependencies]
@@ -21,11 +17,15 @@ serde = { version = "1", features = ["derive"] }
 chrono = "0.4"
 ```
 
-### JWT Middleware Setup
+`JwtAuth::new` takes a **decoder** (not a raw secret string). Use `ConstDecoder::from_secret` for HMAC or `ConstDecoder::from_rsa_pem` / `from_ec_pem` for asymmetric keys.
 
 ```rust
-use salvo::jwt_auth::{JwtAuth, JwtClaims};
+use salvo::prelude::*;
+use salvo::jwt_auth::{ConstDecoder, HeaderFinder, JwtAuth, JwtAuthDepotExt, QueryFinder};
+use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
+
+const SECRET_KEY: &str = "your-secret-key-at-least-32-bytes";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct JwtClaims {
@@ -34,11 +34,42 @@ struct JwtClaims {
     role: String,
 }
 
-const SECRET_KEY: &str = "your-secret-key-at-least-32-bytes";
+#[derive(Deserialize)]
+struct LoginRequest { username: String, password: String }
+
+#[derive(Serialize)]
+struct LoginResponse { token: String }
+
+#[handler]
+async fn login(body: JsonBody<LoginRequest>) -> Result<Json<LoginResponse>, StatusError> {
+    let req = body.into_inner();
+    if req.username != "admin" || req.password != "password" {
+        return Err(StatusError::unauthorized());
+    }
+    let claims = JwtClaims {
+        sub: req.username,
+        exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp(),
+        role: "user".to_string(),
+    };
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(SECRET_KEY.as_bytes()),
+    )
+    .map_err(|_| StatusError::internal_server_error())?;
+    Ok(Json(LoginResponse { token }))
+}
+
+#[handler]
+async fn protected(depot: &mut Depot) -> Result<String, StatusError> {
+    let data = depot.jwt_auth_data::<JwtClaims>()
+        .ok_or_else(StatusError::unauthorized)?;
+    Ok(format!("Hello, {}! Role: {}", data.claims.sub, data.claims.role))
+}
 
 #[tokio::main]
 async fn main() {
-    let auth_handler = JwtAuth::new("secret_key")
+    let auth: JwtAuth<JwtClaims, _> = JwtAuth::new(ConstDecoder::from_secret(SECRET_KEY.as_bytes()))
         .finders(vec![
             Box::new(HeaderFinder::new()),
             Box::new(QueryFinder::new("token")),
@@ -46,87 +77,28 @@ async fn main() {
 
     let router = Router::new()
         .push(Router::with_path("login").post(login))
-        .push(
-            Router::with_path("protected")
-                .hoop(auth_handler)
-                .get(protected_handler)
-        );
+        .push(Router::with_path("protected").hoop(auth).get(protected));
 
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
 
-### Login Handler
+Available finders: `HeaderFinder`, `QueryFinder`, `FormFinder`, `CookieFinder`. Available decoders include `ConstDecoder` and (with `oidc` feature) `OidcDecoder`.
 
-```rust
-use jsonwebtoken::{encode, EncodingKey, Header};
-use salvo::prelude::*;
-use serde::{Deserialize, Serialize};
+### Depot extension
 
-#[derive(Deserialize)]
-struct LoginRequest {
-    username: String,
-    password: String,
-}
-
-#[derive(Serialize)]
-struct LoginResponse {
-    token: String,
-}
-
-#[handler]
-async fn login(body: JsonBody<LoginRequest>) -> Result<Json<LoginResponse>, StatusError> {
-    let req = body.into_inner();
-
-    // Validate credentials (replace with actual validation)
-    if req.username != "admin" || req.password != "password" {
-        return Err(StatusError::unauthorized());
-    }
-
-    // Create JWT claims
-    let claims = JwtClaims {
-        sub: req.username,
-        exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp(),
-        role: "user".to_string(),
-    };
-
-    // Encode JWT
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(SECRET_KEY.as_bytes()),
-    )
-    .map_err(|_| StatusError::internal_server_error())?;
-
-    Ok(Json(LoginResponse { token }))
-}
-```
-
-### Protected Handler
-
-```rust
-use salvo::jwt_auth::JwtAuthDepotExt;
-
-#[handler]
-async fn protected_handler(depot: &mut Depot) -> Result<String, StatusError> {
-    let token_data = depot.jwt_auth_data::<JwtClaims>()
-        .ok_or_else(|| StatusError::unauthorized())?;
-
-    Ok(format!("Hello, {}! Role: {}", token_data.claims.sub, token_data.claims.role))
-}
-```
+`JwtAuthDepotExt` provides:
+- `depot.jwt_auth_token() -> Option<&str>`
+- `depot.jwt_auth_data::<C>() -> Option<&TokenData<C>>`
+- `depot.jwt_auth_state() -> JwtAuthState` (`Authorized` / `Unauthorized` / `Forbidden`)
 
 ## Basic Authentication
-
-### Setup
 
 ```toml
 [dependencies]
 salvo = { version = "0.89.3", features = ["basic-auth"] }
 ```
-
-### Basic Auth Middleware
 
 ```rust
 use salvo::prelude::*;
@@ -139,9 +111,6 @@ impl BasicAuthValidator for MyValidator {
         if username == "admin" && password == "password" {
             depot.insert("user_role", "admin");
             true
-        } else if username == "user" && password == "userpass" {
-            depot.insert("user_role", "user");
-            true
         } else {
             false
         }
@@ -150,21 +119,16 @@ impl BasicAuthValidator for MyValidator {
 
 #[tokio::main]
 async fn main() {
-    let auth_handler = BasicAuth::new(MyValidator);
-
-    let router = Router::new()
-        .push(
-            Router::with_path("admin")
-                .hoop(auth_handler)
-                .get(admin_handler)
-        );
-
+    let auth = BasicAuth::new(MyValidator);
+    let router = Router::with_path("admin").hoop(auth).get(admin_handler);
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
 
-## Custom Authentication Middleware
+`BasicAuth::new(v).set_realm("myapp")` customizes the realm. Retrieve the authenticated user via `depot.basic_auth_username()` (`BasicAuthDepotExt`).
+
+## Custom Middleware (Bearer / API Key)
 
 ```rust
 use salvo::prelude::*;
@@ -174,286 +138,82 @@ async fn auth_middleware(req: &mut Request, depot: &mut Depot, res: &mut Respons
     let token = req.header::<String>("Authorization")
         .and_then(|h| h.strip_prefix("Bearer ").map(String::from));
 
-    match token {
-        Some(token) => {
-            match validate_token(&token) {
-                Ok(user_id) => {
-                    depot.insert("user_id", user_id);
-                    ctrl.call_next(req, depot, res).await;
-                }
-                Err(_) => {
-                    res.status_code(StatusCode::UNAUTHORIZED);
-                    res.render(Json(serde_json::json!({"error": "Invalid token"})));
-                    ctrl.skip_rest();
-                }
-            }
+    match token.and_then(|t| validate_token(&t).ok()) {
+        Some(user_id) => {
+            depot.insert("user_id", user_id);
         }
         None => {
             res.status_code(StatusCode::UNAUTHORIZED);
-            res.render(Json(serde_json::json!({"error": "Missing token"})));
+            res.render(Json(serde_json::json!({"error": "Unauthorized"})));
             ctrl.skip_rest();
         }
     }
 }
 
 fn validate_token(token: &str) -> Result<i64, ()> {
-    // Implement token validation logic
-    if token == "valid_token" {
-        Ok(123)
-    } else {
-        Err(())
-    }
+    if token == "valid_token" { Ok(123) } else { Err(()) }
 }
 ```
 
-## API Key Authentication
+For an API key scheme, read `req.header::<String>("X-API-Key")` and follow the same pattern.
+
+## Role-Based Access Control
 
 ```rust
-#[handler]
-async fn api_key_auth(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
-    let api_key = req.header::<String>("X-API-Key");
-
-    match api_key {
-        Some(key) if is_valid_api_key(&key) => {
-            depot.insert("api_key", key);
-            ctrl.call_next(req, depot, res).await;
-        }
-        _ => {
-            res.status_code(StatusCode::UNAUTHORIZED);
-            res.render("Invalid API key");
-            ctrl.skip_rest();
-        }
-    }
-}
-
-fn is_valid_api_key(key: &str) -> bool {
-    // Validate against database or config
-    key == "valid-api-key-12345"
-}
-```
-
-## Session-Based Authentication
-
-```rust
-use salvo::prelude::*;
-use salvo::session::{SessionHandler, CookieStore, SessionDepotExt};
-
-#[tokio::main]
-async fn main() {
-    let session_handler = SessionHandler::builder(
-        CookieStore::new(),
-        b"secret_key_must_be_at_least_64_bytes_long_for_security_reasons!!",
-    )
-    .build()
-    .unwrap();
-
-    let router = Router::new()
-        .hoop(session_handler)
-        .push(Router::with_path("login").post(login))
-        .push(Router::with_path("profile").get(profile));
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
-
-#[handler]
-async fn login(depot: &mut Depot) -> StatusCode {
-    let session = depot.session_mut().unwrap();
-    session.insert("user_id", 123).unwrap();
-    StatusCode::OK
-}
-
-#[handler]
-async fn profile(depot: &mut Depot) -> Result<String, StatusError> {
-    let session = depot.session().unwrap();
-    let user_id: Option<i64> = session.get("user_id");
-
-    match user_id {
-        Some(id) => Ok(format!("User ID: {}", id)),
-        None => Err(StatusError::unauthorized()),
-    }
-}
-```
-
-## Role-Based Access Control (RBAC)
-
-```rust
-#[derive(Clone)]
-enum Role {
-    Admin,
-    User,
-    Guest,
-}
+#[derive(Clone, PartialEq)]
+enum Role { Admin, User, Guest }
 
 fn require_role(required: Role) -> impl Handler {
-    move |req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl| async move {
-        let user_role = depot.get::<Role>("user_role");
-
-        match user_role {
-            Some(role) if matches!((role, &required), (Role::Admin, _) | (Role::User, Role::User)) => {
-                ctrl.call_next(req, depot, res).await;
-            }
-            _ => {
-                res.status_code(StatusCode::FORBIDDEN);
-                res.render("Insufficient permissions");
-                ctrl.skip_rest();
-            }
-        }
+    #[handler]
+    async fn check(depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
+        // Pull required role from a closure-captured value in real code.
     }
+    check
 }
-
-let router = Router::new()
-    .push(
-        Router::with_path("admin")
-            .hoop(auth_middleware)
-            .hoop(require_role(Role::Admin))
-            .get(admin_handler)
-    )
-    .push(
-        Router::with_path("user")
-            .hoop(auth_middleware)
-            .hoop(require_role(Role::User))
-            .get(user_handler)
-    );
 ```
 
-## JWT with Refresh Tokens
+In practice, store the role in `Depot` during authentication, then build a small `#[handler]` that reads it and calls `ctrl.skip_rest()` with 403 on mismatch. Chain it after the auth middleware:
 
 ```rust
-use serde::{Deserialize, Serialize};
+Router::with_path("admin")
+    .hoop(auth)
+    .hoop(require_admin)
+    .get(admin_handler);
+```
 
-#[derive(Deserialize)]
-struct RefreshRequest {
-    refresh_token: String,
-}
+## Refresh Tokens
 
-#[derive(Serialize)]
-struct TokenResponse {
-    access_token: String,
-    refresh_token: String,
-    expires_in: i64,
-}
+Issue a short-lived access token (e.g. 15 min) and a long-lived refresh token stored server-side (DB/Redis). On `/refresh`, validate the refresh token, look up the user, mint a new access token, and optionally rotate the refresh token.
 
+```rust
 #[handler]
-async fn refresh_token(body: JsonBody<RefreshRequest>) -> Result<Json<TokenResponse>, StatusError> {
-    let req = body.into_inner();
-
-    // Validate refresh token (check database/cache)
-    let user_id = validate_refresh_token(&req.refresh_token)
+async fn refresh(body: JsonBody<RefreshRequest>) -> Result<Json<TokenResponse>, StatusError> {
+    let user_id = validate_refresh_token(&body.into_inner().refresh_token)
         .map_err(|_| StatusError::unauthorized())?;
-
-    // Generate new tokens
-    let access_claims = JwtClaims {
+    let claims = JwtClaims {
         sub: user_id.to_string(),
         exp: (chrono::Utc::now() + chrono::Duration::minutes(15)).timestamp(),
-        role: "user".to_string(),
+        role: "user".into(),
     };
-
     let access_token = encode(
         &Header::default(),
-        &access_claims,
+        &claims,
         &EncodingKey::from_secret(SECRET_KEY.as_bytes()),
-    )
-    .map_err(|_| StatusError::internal_server_error())?;
-
-    // Generate new refresh token and store it
-    let refresh_token = generate_refresh_token();
-
+    ).map_err(|_| StatusError::internal_server_error())?;
     Ok(Json(TokenResponse {
         access_token,
-        refresh_token,
-        expires_in: 900, // 15 minutes
+        refresh_token: generate_refresh_token(),
+        expires_in: 900,
     }))
 }
 ```
 
-## Complete Authentication Example
+## Salvo-specific Notes
 
-```rust
-use salvo::prelude::*;
-use salvo::jwt_auth::{ConstDecoder, JwtAuth, HeaderFinder, JwtAuthDepotExt};
-use jsonwebtoken::{encode, EncodingKey, Header};
-use serde::{Deserialize, Serialize};
-
-const SECRET_KEY: &str = "your-secret-key-at-least-32-bytes";
-
-#[derive(Debug, Serialize, Deserialize)]
-struct JwtClaims {
-    sub: String,
-    exp: i64,
-}
-
-#[derive(Deserialize)]
-struct LoginRequest {
-    username: String,
-    password: String,
-}
-
-#[derive(Serialize)]
-struct LoginResponse {
-    token: String,
-}
-
-#[handler]
-async fn login(body: JsonBody<LoginRequest>) -> Result<Json<LoginResponse>, StatusError> {
-    let req = body.into_inner();
-
-    if req.username != "admin" || req.password != "password" {
-        return Err(StatusError::unauthorized());
-    }
-
-    let claims = JwtClaims {
-        sub: req.username,
-        exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp(),
-    };
-
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(SECRET_KEY.as_bytes()),
-    )
-    .map_err(|_| StatusError::internal_server_error())?;
-
-    Ok(Json(LoginResponse { token }))
-}
-
-#[handler]
-async fn protected(depot: &mut Depot) -> Result<String, StatusError> {
-    let data = depot.jwt_auth_data::<JwtClaims>()
-        .ok_or_else(|| StatusError::unauthorized())?;
-    Ok(format!("Welcome, {}!", data.claims.sub))
-}
-
-#[tokio::main]
-async fn main() {
-    let auth: JwtAuth<JwtClaims, _> = JwtAuth::new(ConstDecoder::from_secret(SECRET_KEY.as_bytes()))
-        .finders(vec![Box::new(HeaderFinder::new())]);
-
-    let router = Router::new()
-        .push(Router::with_path("login").post(login))
-        .push(
-            Router::with_path("protected")
-                .hoop(auth)
-                .get(protected)
-        );
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
-```
-
-## Best Practices
-
-1. Never store passwords in plain text - use bcrypt or argon2
-2. Use strong secret keys (at least 32 bytes for HMAC, 64 bytes for sessions)
-3. Set appropriate token expiration times (15 min for access, days for refresh)
-4. Use HTTPS in production
-5. Implement rate limiting for login endpoints
-6. Store sensitive data in environment variables
-7. Validate tokens on every protected request
-8. Use refresh tokens for long-lived sessions
-9. Implement proper logout functionality (token revocation)
-10. Log authentication failures for security monitoring
+- `JwtAuth::new` requires a `JwtAuthDecoder` impl, not a `&str`. Passing a string will not compile.
+- `JwtAuth` has a type parameter for the claims type; annotate it (`JwtAuth<JwtClaims, _>`) when the compiler cannot infer it.
+- `.force_passed(true)` lets the request continue even when unauthorized so downstream handlers can decide; default is `false`.
+- `BasicAuthValidator::validate` uses native `async fn` in traits (no `async_trait` crate required).
 
 ## Related Skills
 

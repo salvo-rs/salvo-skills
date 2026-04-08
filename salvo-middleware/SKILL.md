@@ -7,140 +7,120 @@ tags: [core, middleware, hoop, flow-ctrl]
 
 # Salvo Middleware
 
-This skill helps implement middleware in Salvo applications. In Salvo, middleware is just a handler with flow control - the same concept applies to both.
+In Salvo, middleware is just a `Handler` that calls `ctrl.call_next(...)`. Attach it with `hoop()`; it runs for the current router and all descendants.
 
-## Basic Middleware Pattern
-
-Middleware uses `FlowCtrl` to control execution flow:
+## Basic middleware
 
 ```rust
 use salvo::prelude::*;
 
 #[handler]
-async fn logger(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
-    println!("Request: {} {}", req.method(), req.uri().path());
-
-    // Continue to next handler
+async fn logger(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+    ctrl: &mut FlowCtrl,
+) {
+    println!("--> {} {}", req.method(), req.uri().path());
     ctrl.call_next(req, depot, res).await;
-
-    println!("Response status: {}", res.status_code().unwrap_or(StatusCode::OK));
+    println!("<-- {}", res.status_code().unwrap_or(StatusCode::OK));
 }
+
+let router = Router::new().hoop(logger).get(handler);
 ```
 
-## Middleware Attachment
+Omit `ctrl.call_next(...)` only at the end of the chain; otherwise downstream handlers will not run.
 
-Use `hoop()` to attach middleware:
+## Scoping
+
+`hoop()` on a router applies to that router and its descendants. Compose scopes with `push()`:
 
 ```rust
 let router = Router::new()
-    .hoop(logger)
-    .hoop(auth_check)
-    .get(handler);
-```
-
-Middleware applies to all child routes:
-
-```rust
-let router = Router::new()
+    .hoop(logger)                                       // global
     .push(
         Router::with_path("api")
-            .hoop(auth_check)  // Only applies to /api routes
-            .get(protected_handler)
+            .hoop(auth_check)                           // only /api/**
+            .hoop(rate_limiter)
+            .push(Router::with_path("users").get(list_users))
     )
-    .get(public_handler);  // No auth check
+    .push(Router::with_path("public").get(public_handler));  // no auth
 ```
 
-## Middleware Scopes
+## FlowCtrl
 
-### Global Middleware
+- `call_next(req, depot, res).await` — run the next handler
+- `skip_rest()` — skip all remaining handlers (the response you set is returned)
+- `cease()` — `skip_rest()` plus mark as ceased; subsequent middleware should check `is_ceased()`
+- `is_ceased()` — has the flow been explicitly ceased
 
-```rust
-let router = Router::new()
-    .hoop(global_middleware)  // Applies to all routes
-    .push(Router::with_path("/api").get(api_handler))
-    .push(Router::with_path("/admin").get(admin_handler));
-```
+Salvo also auto-skips the rest of the chain when a handler sets an error (4xx/5xx) or redirect (3xx) status.
 
-### Route-Level Middleware
-
-```rust
-let router = Router::new()
-    .push(
-        Router::with_path("/api")
-            .hoop(api_middleware)  // Only applies to /api
-            .get(api_handler)
-    )
-    .push(Router::with_path("/admin").get(admin_handler));
-```
-
-### Combined Usage
-
-```rust
-let router = Router::new()
-    .hoop(logger)  // Global logging
-    .push(
-        Router::with_path("/api")
-            .hoop(auth_middleware)  // API authentication
-            .hoop(rate_limiter)     // API rate limiting
-            .get(api_handler)
-    )
-    .push(
-        Router::with_path("/public")
-            .get(public_handler)  // No auth required
-    );
-```
-
-## Common Middleware Patterns
-
-### Authentication
+## Authentication pattern
 
 ```rust
 #[handler]
-async fn auth_check(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
+async fn auth_check(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+    ctrl: &mut FlowCtrl,
+) {
     let token = req.header::<String>("Authorization");
-
-    match token {
-        Some(token) if validate_token(&token) => {
-            depot.insert("user_id", extract_user_id(&token));
+    match token.as_deref().and_then(validate_token) {
+        Some(user) => {
+            depot.insert("user", user);
             ctrl.call_next(req, depot, res).await;
         }
-        _ => {
-            res.status_code(StatusCode::UNAUTHORIZED);
-            res.render("Unauthorized");
+        None => {
+            res.render(StatusError::unauthorized());
             ctrl.skip_rest();
         }
     }
 }
 ```
 
-### Request Logging with Timing
+Setting an error status via `StatusError` auto-stops the chain, but calling `skip_rest()` explicitly is clearer.
+
+## Depot for sharing data
 
 ```rust
 #[handler]
-async fn request_logger(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
-    let start = std::time::Instant::now();
-    let method = req.method().clone();
-    let path = req.uri().path().to_string();
-
-    ctrl.call_next(req, depot, res).await;
-
-    let duration = start.elapsed();
-    let status = res.status_code().unwrap_or(StatusCode::OK);
-    println!("{} {} - {} ({:?})", method, path, status, duration);
+async fn protected(depot: &mut Depot) -> String {
+    // Depot::get returns Result<&V, _>, not Option
+    let user: &User = depot.get("user").unwrap();
+    format!("hello, {}", user.name)
 }
 ```
 
-### Add Custom Response Header
+Depot API:
+
+- `depot.insert(key, value)` — stores by string key
+- `depot.get::<V>(key)` — returns `Result<&V, Option<&Box<dyn Any>>>`
+- `depot.inject(value)` — stores by type (single value per type)
+- `depot.obtain::<V>()` — retrieves by type, returns `Result`
+
+Prefer `inject` / `obtain` when the type itself is the key; use `insert` / `get` when you need multiple values of the same type distinguished by name.
+
+## Early response
 
 ```rust
 #[handler]
-async fn add_custom_header(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
-    res.headers_mut().insert("X-Custom-Header", "Salvo".parse().unwrap());
-    ctrl.call_next(req, depot, res).await;
+async fn guard(
+    req: &mut Request,
+    _depot: &mut Depot,
+    res: &mut Response,
+    ctrl: &mut FlowCtrl,
+) {
+    if !is_valid(req) {
+        res.render(StatusError::bad_request().brief("invalid input"));
+        ctrl.skip_rest();
+    }
+    // fall through to call_next if you want to continue
 }
 ```
 
-### CORS
+## CORS
 
 ```rust
 use salvo::cors::Cors;
@@ -148,18 +128,19 @@ use salvo::http::Method;
 
 let cors = Cors::new()
     .allow_origin("https://example.com")
-    .allow_methods(vec![Method::GET, Method::POST, Method::PUT, Method::DELETE])
+    .allow_methods(vec![Method::GET, Method::POST])
     .allow_headers(vec!["Content-Type", "Authorization"])
     .into_handler();
 
-let router = Router::new().hoop(cors);
+let router = Router::new().hoop(cors).get(handler);
 ```
 
-### Rate Limiting
+`Cors` is a builder; call `.into_handler()` before passing to `hoop()`. `Cors::permissive()` also requires `.into_handler()`.
+
+## Rate limiting
 
 ```rust
-use salvo::rate_limiter::{RateLimiter, FixedGuard, RemoteIpIssuer, BasicQuota, MokaStore};
-use std::time::Duration;
+use salvo::rate_limiter::{BasicQuota, FixedGuard, MokaStore, RateLimiter, RemoteIpIssuer};
 
 let limiter = RateLimiter::new(
     FixedGuard::new(),
@@ -168,129 +149,50 @@ let limiter = RateLimiter::new(
     BasicQuota::per_second(10),
 );
 
-let router = Router::new().hoop(limiter);
+let router = Router::new().hoop(limiter).get(handler);
 ```
 
-## Using Depot for Data Sharing
+## Built-in middleware
 
-Store data in middleware for use in handlers:
-
-```rust
-#[handler]
-async fn auth_middleware(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
-    let user = authenticate(req).await;
-    depot.insert("user", user);
-    ctrl.call_next(req, depot, res).await;
-}
-
-#[handler]
-async fn protected_handler(depot: &mut Depot) -> String {
-    let user = depot.get::<User>("user").unwrap();
-    format!("Hello, {}", user.name)
-}
-```
-
-### Type-Safe Depot Usage
+| Type | Feature flag | Crate path |
+|---|---|---|
+| `Logger` | `logging` | `salvo::logging` |
+| `Compression` | `compression` | `salvo::compression` |
+| `Cors` (+ `.into_handler()`) | `cors` | `salvo::cors` |
+| `Timeout` | `timeout` | `salvo::timeout` |
+| `Csrf` | `csrf` | `salvo::csrf` |
+| `RateLimiter` | `rate-limiter` | `salvo::rate_limiter` |
+| `MaxConcurrency` | `concurrency-limiter` | `salvo::concurrency_limiter` |
+| `MaxSize` | `size-limiter` | `salvo::size_limiter` |
+| `CachingHeaders` | `caching-headers` | `salvo::caching_headers` |
+| `CatchPanic` | `catch-panic` | `salvo::catch_panic` |
+| `RequestId` | `request-id` | `salvo::request_id` |
 
 ```rust
-// Store different types
-depot.insert("string_value", "hello");
-depot.insert("int_value", 42);
-depot.insert("bool_value", true);
-
-// Safely retrieve values (type must match)
-if let Some(str_val) = depot.get::<&str>("string_value") {
-    println!("String value: {}", str_val);
-}
-
-if let Some(int_val) = depot.get::<i32>("int_value") {
-    println!("Int value: {}", int_val);
-}
-```
-
-## Early Response
-
-Stop execution and return response immediately:
-
-```rust
-#[handler]
-async fn validate_input(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
-    if !is_valid_request(req) {
-        res.status_code(StatusCode::BAD_REQUEST);
-        res.render("Invalid request");
-        ctrl.skip_rest();  // Stop processing
-        return;
-    }
-    ctrl.call_next(req, depot, res).await;
-}
-```
-
-## FlowCtrl Methods
-
-`FlowCtrl` provides methods to control middleware chain execution:
-
-- `call_next()`: Call the next middleware or handler
-- `skip_rest()`: Skip remaining middleware and handlers
-- `is_ceased()`: Check if execution has been stopped
-
-## Built-in Middleware
-
-Salvo provides many built-in middleware:
-
-```rust
-use salvo::compression::Compression;
-use salvo::cors::Cors;
-use salvo::logging::Logger;
-use salvo::timeout::Timeout;
 use std::time::Duration;
+use salvo::logging::Logger;
+use salvo::compression::Compression;
+use salvo::timeout::Timeout;
 
 let router = Router::new()
     .hoop(Logger::new())
     .hoop(Compression::new())
-    .hoop(Cors::permissive())
     .hoop(Timeout::new(Duration::from_secs(30)));
 ```
 
-### Common Built-in Middleware
-
-| Middleware | Feature | Description |
-|------------|---------|-------------|
-| `Logger` | `logging` | Request/response logging |
-| `Compression` | `compression` | Response compression (gzip, brotli) |
-| `Cors` | `cors` | Cross-Origin Resource Sharing |
-| `Timeout` | `timeout` | Request timeout handling |
-| `CsrfHandler` | `csrf` | CSRF protection |
-| `RateLimiter` | `rate-limiter` | Rate limiting |
-| `ConcurrencyLimiter` | `concurrency-limiter` | Concurrent request limiting |
-| `SizeLimiter` | `size-limiter` | Request body size limiting |
-
-## Middleware Execution Order (Onion Model)
-
-Middleware executes in an onion-like pattern:
+## Execution order (onion model)
 
 ```rust
 Router::new()
-    .hoop(middleware_a)  // Runs first (outer layer)
-    .hoop(middleware_b)  // Runs second
-    .hoop(middleware_c)  // Runs third (inner layer)
-    .get(handler);       // Core handler
-
-// Execution order:
-// middleware_a (before) -> middleware_b (before) -> middleware_c (before)
-// -> handler
-// -> middleware_c (after) -> middleware_b (after) -> middleware_a (after)
+    .hoop(a)  // outermost
+    .hoop(b)
+    .hoop(c)  // innermost
+    .get(handler);
+// a-before -> b-before -> c-before -> handler
+//                                  -> c-after -> b-after -> a-after
 ```
 
-## Best Practices
-
-1. Use `ctrl.call_next()` to continue execution
-2. Use `ctrl.skip_rest()` to stop early
-3. Store shared data in `Depot`
-4. Apply middleware at appropriate router level
-5. Order middleware by dependency (auth before authorization)
-6. Use built-in middleware when available
-7. Keep middleware focused on single concern
-8. Put logging middleware first to capture all requests
+Code after `ctrl.call_next(...)` runs on the way out. Put logging/timing outermost, auth before authorization, body parsing before handlers that need it.
 
 ## Related Skills
 

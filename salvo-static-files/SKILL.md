@@ -7,19 +7,29 @@ tags: [data, static-files, assets, serve-static]
 
 # Salvo Static File Serving
 
-This skill helps serve static files in Salvo applications, including directories, single files, and embedded assets.
-
 ## Setup
 
 ```toml
 [dependencies]
 salvo = { version = "0.89.3", features = ["serve-static"] }
-
-# For embedded files
-rust-embed = "8"
+rust-embed = "8"   # only for embedded assets
 ```
 
-## Serving a Directory
+Catch-all path segment uses `{*path}` (greedy, single segment required) or `{**path}` (greedy, may be empty).
+
+## StaticDir
+
+`StaticDir::new(roots)` accepts one or more root directories tried in order (first match wins). Builder methods:
+
+- `defaults(names)` — file(s) to try when the URL points to a directory (e.g. `"index.html"`)
+- `fallback(name)` — file served when no match is found (for SPAs)
+- `auto_list(bool)` — enable directory listing
+- `include_dot_files(bool)` — include files starting with `.`
+- `exclude(fn)` — filter predicate
+- `chunk_size(u64)` — streaming chunk size
+- `compressed_variation(algo, exts)` — serve pre-compressed variants
+
+Note: `StaticDir` does NOT expose a `cache_control()` builder. For cache headers, add a middleware that sets them on the response.
 
 ```rust
 use salvo::prelude::*;
@@ -28,52 +38,52 @@ use salvo::serve_static::StaticDir;
 #[tokio::main]
 async fn main() {
     let router = Router::with_path("{*path}").get(
-        StaticDir::new(["static", "public"])  // Multiple fallback directories
-            .defaults("index.html")            // Default file for directories
-            .auto_list(true)                   // Enable directory listing
+        StaticDir::new(["static", "public"])
+            .defaults("index.html")
+            .auto_list(true),
     );
-
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
 
-## StaticDir Options
+## Setting Cache Headers
+
+Since `StaticDir` has no builder for cache headers, use a middleware:
 
 ```rust
-use salvo::serve_static::StaticDir;
+use salvo::prelude::*;
+use salvo::http::header::{CACHE_CONTROL, HeaderValue};
 
-let static_handler = StaticDir::new(["static"])
-    // Default file when accessing directories
-    .defaults("index.html")
-    // Enable directory listing
-    .auto_list(true)
-    // Include hidden files (starting with .)
-    .include_dot_files(false)
-    // Set cache control headers
-    .cache_control("max-age=3600");
+#[handler]
+async fn set_cache(res: &mut Response) {
+    res.headers_mut().insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=31536000, immutable"),
+    );
+}
+
+let assets = Router::with_path("assets/{*path}")
+    .hoop(set_cache)
+    .get(StaticDir::new(["static/assets"]));
 ```
 
-## Serving a Single File
+## StaticFile (Single File)
 
 ```rust
 use salvo::prelude::*;
 use salvo::serve_static::StaticFile;
 
-#[tokio::main]
-async fn main() {
-    let router = Router::new()
-        .push(Router::with_path("favicon.ico").get(StaticFile::new("static/favicon.ico")))
-        .push(Router::with_path("robots.txt").get(StaticFile::new("static/robots.txt")));
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
+let router = Router::new()
+    .push(Router::with_path("favicon.ico").get(StaticFile::new("static/favicon.ico")))
+    .push(Router::with_path("robots.txt").get(StaticFile::new("static/robots.txt")));
 ```
 
-## Embedded Static Files
+`StaticFile` wraps a `NamedFileBuilder`, so it handles ETag, `Range`, and conditional requests.
 
-Embed files at compile time for single-binary deployment:
+## Embedded Assets (`rust-embed`)
+
+Embed files at compile time for single-binary deployment.
 
 ```rust
 use rust_embed::RustEmbed;
@@ -81,256 +91,81 @@ use salvo::prelude::*;
 use salvo::serve_static::static_embed;
 
 #[derive(RustEmbed)]
-#[folder = "static"]  // Folder to embed
+#[folder = "dist"]
 struct Assets;
 
 #[tokio::main]
 async fn main() {
     let router = Router::with_path("{*path}").get(
-        static_embed::<Assets>()
-            .fallback("index.html")  // SPA fallback
+        static_embed::<Assets>().fallback("index.html"),  // SPA fallback
     );
-
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
 
-## Combined API and Static Files
+`StaticEmbed` builder methods: `defaults(names)`, `fallback(name)`. No `cache_control` here either.
+
+## API + Static Hybrid
+
+Put API routes before the catch-all static route so they match first.
 
 ```rust
 use salvo::prelude::*;
 use salvo::serve_static::StaticDir;
 
 #[handler]
-async fn api_users() -> Json<Vec<String>> {
-    Json(vec!["Alice".to_string(), "Bob".to_string()])
-}
-
-#[handler]
-async fn api_posts() -> Json<Vec<String>> {
-    Json(vec!["Post 1".to_string(), "Post 2".to_string()])
-}
+async fn api_users() -> Json<Vec<&'static str>> { Json(vec!["Alice", "Bob"]) }
 
 #[tokio::main]
 async fn main() {
     let router = Router::new()
-        // API routes
-        .push(
-            Router::with_path("api")
-                .push(Router::with_path("users").get(api_users))
-                .push(Router::with_path("posts").get(api_posts))
-        )
-        // Static files for everything else
+        .push(Router::with_path("api/users").get(api_users))
         .push(
             Router::with_path("{*path}").get(
-                StaticDir::new(["static"])
-                    .defaults("index.html")
-            )
+                StaticDir::new(["static"]).defaults("index.html"),
+            ),
         );
-
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
 
-## SPA (Single Page Application) Support
-
-```rust
-use rust_embed::RustEmbed;
-use salvo::prelude::*;
-use salvo::serve_static::static_embed;
-
-#[derive(RustEmbed)]
-#[folder = "dist"]  // Vue/React build output
-struct Assets;
-
-#[tokio::main]
-async fn main() {
-    let router = Router::new()
-        // API routes first
-        .push(Router::with_path("api/{**rest}").get(api_handler))
-        // SPA - serve index.html for all other routes
-        .push(
-            Router::with_path("{*path}").get(
-                static_embed::<Assets>()
-                    .fallback("index.html")  // All routes fall back to index.html
-            )
-        );
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
-```
-
-## Serving Different Asset Types
+## Protected Static Content
 
 ```rust
 use salvo::prelude::*;
 use salvo::serve_static::StaticDir;
-
-#[tokio::main]
-async fn main() {
-    let router = Router::new()
-        // CSS files
-        .push(
-            Router::with_path("css/{*path}").get(
-                StaticDir::new(["static/css"])
-                    .cache_control("max-age=31536000")  // 1 year for hashed assets
-            )
-        )
-        // JavaScript files
-        .push(
-            Router::with_path("js/{*path}").get(
-                StaticDir::new(["static/js"])
-                    .cache_control("max-age=31536000")
-            )
-        )
-        // Images
-        .push(
-            Router::with_path("images/{*path}").get(
-                StaticDir::new(["static/images"])
-                    .cache_control("max-age=86400")  // 1 day
-            )
-        )
-        // Uploads (user content, no long cache)
-        .push(
-            Router::with_path("uploads/{*path}").get(
-                StaticDir::new(["uploads"])
-                    .cache_control("max-age=3600")  // 1 hour
-            )
-        );
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
-```
-
-## File Downloads
-
-```rust
-use salvo::prelude::*;
-use salvo::fs::NamedFile;
+use salvo::session::SessionDepotExt;
 
 #[handler]
-async fn download_file(req: &mut Request, res: &mut Response) {
-    let filename: String = req.param("filename").unwrap();
-    let file_path = format!("downloads/{}", filename);
-
-    // Serve file with download headers
-    match NamedFile::builder(&file_path)
-        .attached_name(&filename)  // Forces download with filename
-        .send(req.headers(), res)
-        .await
-    {
-        Ok(_) => {}
-        Err(_) => {
-            res.status_code(StatusCode::NOT_FOUND);
-            res.render("File not found");
-        }
-    }
-}
-
-#[handler]
-async fn view_pdf(req: &mut Request, res: &mut Response) {
-    // Serve PDF for viewing in browser (not download)
-    match NamedFile::builder("documents/report.pdf")
-        .content_type("application/pdf")
-        .send(req.headers(), res)
-        .await
-    {
-        Ok(_) => {}
-        Err(_) => {
-            res.status_code(StatusCode::NOT_FOUND);
-        }
-    }
-}
-```
-
-## Directory Listing
-
-```rust
-use salvo::prelude::*;
-use salvo::serve_static::StaticDir;
-
-#[tokio::main]
-async fn main() {
-    let router = Router::with_path("{*path}").get(
-        StaticDir::new(["files"])
-            .auto_list(true)           // Enable directory listing
-            .include_dot_files(false)  // Hide hidden files
-            .defaults("index.html")    // Show index.html if exists
-    );
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
-```
-
-## Conditional Static Serving
-
-```rust
-use salvo::prelude::*;
-use salvo::serve_static::StaticDir;
-
-#[handler]
-async fn check_auth(
-    depot: &mut Depot,
-    res: &mut Response,
-    ctrl: &mut FlowCtrl,
-) {
-    // Check if user is authenticated for protected files
-    let is_authenticated = depot
+async fn require_login(depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
+    let logged_in = depot
         .session_mut()
         .and_then(|s| s.get::<bool>("logged_in"))
         .unwrap_or(false);
-
-    if !is_authenticated {
+    if !logged_in {
         res.status_code(StatusCode::UNAUTHORIZED);
-        res.render("Please login to access files");
         ctrl.skip_rest();
     }
 }
 
-#[tokio::main]
-async fn main() {
-    let router = Router::new()
-        // Public static files
-        .push(
-            Router::with_path("public/{*path}").get(
-                StaticDir::new(["static/public"])
-            )
-        )
-        // Protected static files
-        .push(
-            Router::with_path("private/{*path}")
-                .hoop(check_auth)
-                .get(StaticDir::new(["static/private"]))
-        );
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
+let router = Router::new()
+    .push(Router::with_path("public/{*path}").get(StaticDir::new(["static/public"])))
+    .push(
+        Router::with_path("private/{*path}")
+            .hoop(require_login)
+            .get(StaticDir::new(["static/private"])),
+    );
 ```
 
-## Multiple Fallback Directories
+## Custom Embedded Handler
 
-```rust
-use salvo::serve_static::StaticDir;
-
-// Try directories in order
-let static_handler = StaticDir::new([
-    "static/overrides",  // Custom overrides first
-    "static/default",    // Default files second
-    "node_modules",      // npm packages last
-])
-.defaults("index.html");
-```
-
-## Embedded Assets with Custom Handling
+If you need custom cache rules or content-type overrides, write a handler directly over `RustEmbed::get`.
 
 ```rust
 use rust_embed::RustEmbed;
+use salvo::http::header::{CACHE_CONTROL, CONTENT_TYPE, HeaderValue};
 use salvo::prelude::*;
 
 #[derive(RustEmbed)]
@@ -338,105 +173,61 @@ use salvo::prelude::*;
 struct Assets;
 
 #[handler]
-async fn custom_static(req: &mut Request, res: &mut Response) {
+async fn serve(req: &mut Request, res: &mut Response) {
     let path = req.param::<String>("path").unwrap_or_default();
-
-    match Assets::get(&path) {
-        Some(content) => {
-            // Determine content type
-            let content_type = mime_guess::from_path(&path)
-                .first_or_octet_stream()
-                .to_string();
-
-            res.headers_mut()
-                .insert("Content-Type", content_type.parse().unwrap());
-
-            // Add caching for production
-            if path.contains(".") {  // Has extension = asset
-                res.headers_mut()
-                    .insert("Cache-Control", "max-age=31536000".parse().unwrap());
-            }
-
-            res.write_body(content.data.to_vec()).ok();
-        }
-        None => {
-            // SPA fallback
-            if let Some(index) = Assets::get("index.html") {
-                res.headers_mut()
-                    .insert("Content-Type", "text/html".parse().unwrap());
-                res.write_body(index.data.to_vec()).ok();
-            } else {
-                res.status_code(StatusCode::NOT_FOUND);
-            }
-        }
+    let Some(asset) = Assets::get(&path).or_else(|| Assets::get("index.html")) else {
+        res.status_code(StatusCode::NOT_FOUND);
+        return;
+    };
+    let ct = mime_guess::from_path(&path).first_or_octet_stream().to_string();
+    res.headers_mut().insert(CONTENT_TYPE, ct.parse().unwrap());
+    if path.contains('.') {
+        res.headers_mut().insert(
+            CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=31536000, immutable"),
+        );
     }
+    let _ = res.write_body(asset.data.to_vec());
 }
 ```
 
-## Complete Production Example
+## Compression
+
+`Compression` builder takes `CompressionLevel`, not raw integers or `flate2::Compression`.
 
 ```rust
-use rust_embed::RustEmbed;
+use salvo::compression::{Compression, CompressionLevel};
 use salvo::prelude::*;
-use salvo::serve_static::{StaticDir, static_embed};
-use salvo::compression::Compression;
-
-#[derive(RustEmbed)]
-#[folder = "dist"]
-struct Assets;
-
-#[handler]
-async fn api_handler() -> &'static str {
-    "API Response"
-}
+use salvo::serve_static::StaticDir;
 
 #[tokio::main]
 async fn main() {
-    // Compression for all responses
     let compression = Compression::new()
-        .enable_gzip(flate2::Compression::default())
-        .enable_brotli(11);
+        .enable_gzip(CompressionLevel::Default)
+        .enable_brotli(CompressionLevel::Default)
+        .min_length(1024);
 
     let router = Router::new()
         .hoop(compression)
-        // API routes
-        .push(
-            Router::with_path("api")
-                .push(Router::with_path("data").get(api_handler))
-        )
-        // Uploads (not embedded)
-        .push(
-            Router::with_path("uploads/{*path}").get(
-                StaticDir::new(["uploads"])
-                    .cache_control("max-age=3600")
-            )
-        )
-        // Embedded static files with SPA support
-        .push(
-            Router::with_path("{*path}").get(
-                static_embed::<Assets>()
-                    .fallback("index.html")
-            )
-        );
-
+        .push(Router::with_path("{*path}").get(
+            StaticDir::new(["dist"]).defaults("index.html"),
+        ));
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
 
-## Best Practices
+Requires `compression` feature on `salvo`.
 
-1. **Use embedded files for deployment**: Single binary is easier to deploy
-2. **Set cache headers**: Long cache for hashed assets, short for dynamic content
-3. **Enable compression**: Serve gzip/brotli compressed files
-4. **SPA fallback**: Return index.html for client-side routing
-5. **Separate API from static**: Use distinct paths for API and static content
-6. **Security**: Don't expose sensitive files, check paths
-7. **Directory listing**: Disable in production unless intentional
-8. **Multiple directories**: Use fallback order for themes/overrides
+## Salvo-Specific Notes
+
+- `{*path}` = one or more segments; `{**path}` = zero or more.
+- `StaticDir`/`StaticEmbed` have no `cache_control` builder — set headers via middleware.
+- `StaticDir::new([...])` multi-root = lookup fallback order, great for theme overrides.
+- Use `fallback("index.html")` for SPA client-side routing; use `defaults("index.html")` only for directory index behavior.
 
 ## Related Skills
 
-- **salvo-file-handling**: Handle file uploads and downloads
-- **salvo-compression**: Compress static file responses
-- **salvo-caching**: Cache headers for static assets
+- **salvo-file-handling**: File uploads and downloads via `NamedFile`
+- **salvo-compression**: Response compression details
+- **salvo-caching**: ETag/cache middleware

@@ -7,15 +7,15 @@ tags: [data, file-upload, multipart, download]
 
 # Salvo File Handling
 
-This skill helps handle file uploads and downloads in Salvo applications.
-
 ## Setup
 
 ```toml
 [dependencies]
-salvo = "0.89.3"
-tokio = { version = "1", features = ["fs"] }
+salvo = { version = "0.89.3", features = ["size-limiter"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
 ```
+
+`req.file()`/`req.files()` return `Option<&FilePart>` / `Option<&Vec<FilePart>>`. Salvo writes multipart parts to a temp dir, so `file.path()` points at an on-disk file — copy or rename it to the final location; don't rely on it sticking around after the handler returns.
 
 ## Single File Upload
 
@@ -24,197 +24,121 @@ use std::path::Path;
 use salvo::prelude::*;
 
 #[handler]
-async fn index(res: &mut Response) {
-    res.render(Text::Html(r#"
-        <!DOCTYPE html>
-        <html>
-        <body>
-            <h1>Upload File</h1>
-            <form action="/" method="post" enctype="multipart/form-data">
-                <input type="file" name="file" />
-                <input type="submit" value="Upload" />
-            </form>
-        </body>
-        </html>
-    "#));
-}
-
-#[handler]
 async fn upload(req: &mut Request, res: &mut Response) {
-    let file = req.file("file").await;
-
-    if let Some(file) = file {
-        let dest = format!("temp/{}", file.name().unwrap_or("file"));
-        println!("Uploading to: {}", dest);
-
-        if let Err(e) = std::fs::copy(file.path(), Path::new(&dest)) {
-            res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
-            res.render(Text::Plain(format!("Upload failed: {e}")));
-        } else {
-            res.render(Text::Plain(format!("File uploaded to {dest}")));
-        }
-    } else {
+    let Some(file) = req.file("file").await else {
         res.status_code(StatusCode::BAD_REQUEST);
         res.render(Text::Plain("No file in request"));
+        return;
+    };
+
+    let dest = format!("temp/{}", file.name().unwrap_or("file"));
+    match tokio::fs::copy(file.path(), Path::new(&dest)).await {
+        Ok(_) => res.render(Text::Plain(format!("Uploaded to {dest}"))),
+        Err(e) => {
+            res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
+            res.render(Text::Plain(format!("Upload failed: {e}")));
+        }
     }
 }
 
 #[tokio::main]
 async fn main() {
-    std::fs::create_dir_all("temp").unwrap();
-
-    let router = Router::new().get(index).post(upload);
-
+    tokio::fs::create_dir_all("temp").await.unwrap();
+    let router = Router::new().post(upload);
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
 
-## Multiple File Upload
+HTML form: `<form method="post" enctype="multipart/form-data"><input type="file" name="file"/></form>`.
+
+## Multiple Files
 
 ```rust
-use std::path::Path;
-use salvo::prelude::*;
-
 #[handler]
 async fn upload_files(req: &mut Request, res: &mut Response) {
-    let files = req.files("files").await;
-
-    if let Some(files) = files {
-        let mut uploaded = Vec::with_capacity(files.len());
-
-        for file in files {
-            let dest = format!("temp/{}", file.name().unwrap_or("file"));
-
-            if let Err(e) = std::fs::copy(file.path(), Path::new(&dest)) {
-                res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
-                res.render(Text::Plain(format!("Failed to upload: {e}")));
-                return;
-            } else {
-                uploaded.push(dest);
-            }
-        }
-
-        res.render(Text::Plain(format!(
-            "Files uploaded:\n\n{}",
-            uploaded.join("\n")
-        )));
-    } else {
+    let Some(files) = req.files("files").await else {
         res.status_code(StatusCode::BAD_REQUEST);
-        res.render(Text::Plain("No files in request"));
-    }
-}
-
-static UPLOAD_HTML: &str = r#"<!DOCTYPE html>
-<html>
-<body>
-    <h1>Upload Multiple Files</h1>
-    <form action="/" method="post" enctype="multipart/form-data">
-        <input type="file" name="files" multiple/>
-        <input type="submit" value="Upload" />
-    </form>
-</body>
-</html>
-"#;
-```
-
-## File Validation
-
-```rust
-#[handler]
-async fn upload_image(req: &mut Request, res: &mut Response) {
-    let file = req.file("image").await;
-
-    let Some(file) = file else {
-        res.status_code(StatusCode::BAD_REQUEST);
-        res.render("No file provided");
         return;
     };
 
-    // Validate content type
-    let content_type = file.content_type().unwrap_or_default();
-    let allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    let mut uploaded = Vec::with_capacity(files.len());
+    for file in files {
+        let dest = format!("temp/{}", file.name().unwrap_or("file"));
+        if tokio::fs::copy(file.path(), &dest).await.is_ok() {
+            uploaded.push(dest);
+        }
+    }
+    res.render(Json(uploaded));
+}
+```
 
-    if !allowed_types.contains(&content_type) {
+For any-field upload use `req.all_files().await -> Vec<&FilePart>`; for single unknown-key, `req.first_file().await`.
+
+## Validation
+
+`FilePart::content_type()` returns `Option<mime::Mime>`, not a `&str`. Compare with `.type_()`/`.subtype()` or `.essence_str()`.
+
+```rust
+use salvo::prelude::*;
+
+#[handler]
+async fn upload_image(req: &mut Request, res: &mut Response) {
+    let Some(file) = req.file("image").await else {
         res.status_code(StatusCode::BAD_REQUEST);
-        res.render(format!(
-            "Invalid file type: {}. Allowed: {}",
-            content_type,
-            allowed_types.join(", ")
-        ));
+        res.render("No file");
+        return;
+    };
+
+    let ct = file.content_type().map(|m| m.essence_str().to_owned()).unwrap_or_default();
+    const ALLOWED: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if !ALLOWED.contains(&ct.as_str()) {
+        res.status_code(StatusCode::BAD_REQUEST);
+        res.render(format!("Bad type: {ct}"));
         return;
     }
 
-    // Validate file size (5MB max)
-    let max_size = 5 * 1024 * 1024;
-    if file.size() > max_size {
+    if file.size() > 5 * 1024 * 1024 {
         res.status_code(StatusCode::BAD_REQUEST);
-        res.render(format!(
-            "File too large: {} bytes. Max: {} bytes",
-            file.size(),
-            max_size
-        ));
+        res.render(format!("Too large: {} bytes", file.size()));
         return;
     }
 
-    // Validate extension
     let filename = file.name().unwrap_or("unnamed");
-    let allowed_extensions = ["jpg", "jpeg", "png", "gif", "webp"];
-    let extension = filename.rsplit('.').next().unwrap_or("");
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    let unique = format!("{}.{ext}", uuid::Uuid::new_v4());
+    let dest = format!("uploads/{unique}");
 
-    if !allowed_extensions.contains(&extension.to_lowercase().as_str()) {
-        res.status_code(StatusCode::BAD_REQUEST);
-        res.render("Invalid file extension");
+    if tokio::fs::copy(file.path(), &dest).await.is_err() {
+        res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
         return;
     }
 
-    // Generate unique filename
-    let unique_name = format!(
-        "{}_{}.{}",
-        uuid::Uuid::new_v4(),
-        chrono::Utc::now().timestamp(),
-        extension
-    );
-    let dest = format!("uploads/{}", unique_name);
-
-    if let Err(e) = std::fs::copy(file.path(), &dest) {
-        res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
-        res.render(format!("Upload failed: {e}"));
-    } else {
-        res.render(Json(serde_json::json!({
-            "filename": unique_name,
-            "original_name": filename,
-            "size": file.size(),
-            "content_type": content_type
-        })));
-    }
+    res.render(Json(serde_json::json!({
+        "filename": unique,
+        "original": filename,
+        "size": file.size(),
+        "content_type": ct,
+    })));
 }
 ```
 
 ## Size Limiting
 
-Limit request body size to prevent resource exhaustion:
+Requires `size-limiter` feature. Apply as middleware to limit request body size.
 
 ```rust
 use salvo::prelude::*;
+use salvo::size_limiter::max_size;
 
-#[tokio::main]
-async fn main() {
-    let router = Router::new()
-        .push(
-            Router::with_path("upload")
-                .hoop(max_size(10 * 1024 * 1024))  // 10MB limit
-                .post(upload_handler)
-        );
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
+let router = Router::with_path("upload")
+    .hoop(max_size(10 * 1024 * 1024))  // 10 MiB
+    .post(upload);
 ```
 
-## File Download
+## File Downloads with NamedFile
 
-### Basic Download
+`NamedFile::builder(path)` returns a `NamedFileBuilder`. Key methods: `attached_name(name)` (sets `Content-Disposition: attachment`), `content_type(mime)` (takes `mime::Mime`, not a string), `use_etag(bool)`, `disposition_type(ty)`, `send(headers, res)`.
 
 ```rust
 use salvo::fs::NamedFile;
@@ -223,42 +147,38 @@ use salvo::prelude::*;
 #[handler]
 async fn download(req: &mut Request, res: &mut Response) {
     let filename: String = req.param("filename").unwrap();
-    let filepath = format!("files/{}", filename);
+    let path = format!("files/{filename}");
 
-    match NamedFile::builder(&filepath)
-        .attached_name(&filename)  // Set Content-Disposition: attachment
+    if NamedFile::builder(&path)
+        .attached_name(&filename)
         .send(req.headers(), res)
         .await
+        .is_err()
     {
-        Ok(_) => {}
-        Err(_) => {
-            res.status_code(StatusCode::NOT_FOUND);
-            res.render("File not found");
-        }
+        res.status_code(StatusCode::NOT_FOUND);
+        res.render("File not found");
     }
 }
 ```
 
-### Inline View (PDF, Images)
+Inline view (no `attached_name`) with an explicit MIME:
 
 ```rust
+use salvo::fs::NamedFile;
+use salvo::prelude::*;
+
 #[handler]
 async fn view_pdf(req: &mut Request, res: &mut Response) {
-    match NamedFile::builder("documents/report.pdf")
-        .content_type("application/pdf")
-        // No attached_name = inline display
+    let _ = NamedFile::builder("docs/report.pdf")
+        .content_type(mime::APPLICATION_PDF)
         .send(req.headers(), res)
-        .await
-    {
-        Ok(_) => {}
-        Err(_) => {
-            res.status_code(StatusCode::NOT_FOUND);
-        }
-    }
+        .await;
 }
 ```
 
-### Protected Downloads
+`NamedFile::send` handles `If-None-Match`, `If-Modified-Since`, and `Range` headers automatically.
+
+## Protected Downloads
 
 ```rust
 #[handler]
@@ -267,236 +187,105 @@ async fn protected_download(
     depot: &mut Depot,
     res: &mut Response,
 ) {
-    // Check authentication
-    let user = depot.get::<User>("user");
-    if user.is_none() {
+    let Ok(_user) = depot.obtain::<User>() else {
         res.status_code(StatusCode::UNAUTHORIZED);
-        res.render("Please login");
         return;
-    }
+    };
 
     let filename: String = req.param("filename").unwrap();
-
-    // Validate filename to prevent directory traversal
     if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
         res.status_code(StatusCode::BAD_REQUEST);
-        res.render("Invalid filename");
         return;
     }
 
-    let filepath = format!("private/{}", filename);
-
-    match NamedFile::builder(&filepath)
+    let path = format!("private/{filename}");
+    if NamedFile::builder(&path)
         .attached_name(&filename)
         .send(req.headers(), res)
         .await
+        .is_err()
     {
-        Ok(_) => {}
-        Err(_) => {
-            res.status_code(StatusCode::NOT_FOUND);
-            res.render("File not found");
-        }
+        res.status_code(StatusCode::NOT_FOUND);
     }
 }
 ```
 
-## Form with File and Other Fields
+## Form with File + Text Fields
 
 ```rust
-use salvo::prelude::*;
-use serde::Deserialize;
-
-#[derive(Deserialize)]
-struct ProfileForm {
-    name: String,
-    bio: String,
-}
-
 #[handler]
 async fn update_profile(req: &mut Request, res: &mut Response) {
-    // Parse form fields
     let name = req.form::<String>("name").await.unwrap_or_default();
     let bio = req.form::<String>("bio").await.unwrap_or_default();
 
-    // Handle file upload
-    let avatar_path = if let Some(file) = req.file("avatar").await {
-        let filename = format!("avatar_{}.jpg", uuid::Uuid::new_v4());
-        let dest = format!("uploads/avatars/{}", filename);
-        std::fs::copy(file.path(), &dest).ok();
+    let avatar = if let Some(file) = req.file("avatar").await {
+        let filename = format!("{}.jpg", uuid::Uuid::new_v4());
+        let _ = tokio::fs::copy(file.path(), format!("uploads/{filename}")).await;
         Some(filename)
     } else {
         None
     };
 
-    res.render(Json(serde_json::json!({
-        "name": name,
-        "bio": bio,
-        "avatar": avatar_path
-    })));
+    res.render(Json(serde_json::json!({ "name": name, "bio": bio, "avatar": avatar })));
 }
 ```
 
-## Upload with Progress (Chunked)
+Note: `form_data` and `file`/`files`/`form` all parse multipart lazily and cache. Interleave calls freely.
 
-For large file uploads with progress tracking:
+## Raw Body Upload (non-multipart)
 
 ```rust
 use tokio::io::AsyncWriteExt;
+use salvo::prelude::*;
 
 #[handler]
-async fn chunked_upload(req: &mut Request, res: &mut Response) {
-    let filename: String = req.query("filename").unwrap_or_else(|| "upload".to_string());
-    let dest = format!("uploads/{}", filename);
-
-    let mut file = tokio::fs::File::create(&dest).await.unwrap();
-    let body = req.payload().await.unwrap();
-
-    file.write_all(body).await.unwrap();
-
-    res.render(format!("Uploaded {} bytes", body.len()));
+async fn raw_upload(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
+    let filename: String = req.query("filename").unwrap_or_else(|| "upload".into());
+    let body = req.payload().await.map_err(|_| StatusError::bad_request())?;
+    let mut f = tokio::fs::File::create(format!("uploads/{filename}")).await
+        .map_err(|_| StatusError::internal_server_error())?;
+    f.write_all(body).await.map_err(|_| StatusError::internal_server_error())?;
+    res.render(format!("{} bytes", body.len()));
+    Ok(())
 }
 ```
 
-## File Upload with OpenAPI
+`payload()` honors the request's `max_size`; use `payload_with_max_size(n)` for a custom cap.
+
+## OpenAPI File Upload
 
 ```rust
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
+use serde::Serialize;
 
 #[derive(Serialize, ToSchema)]
-struct UploadResult {
-    filename: String,
-    size: u64,
-    content_type: String,
-}
+struct UploadResult { filename: String, size: u64 }
 
 #[endpoint(
     tags("files"),
-    summary = "Upload a file",
-    request_body(content = "multipart/form-data")
+    request_body(content = "multipart/form-data"),
 )]
-async fn upload_with_openapi(req: &mut Request) -> Result<Json<UploadResult>, StatusError> {
+async fn upload(req: &mut Request) -> Result<Json<UploadResult>, StatusError> {
     let file = req.file("file").await
-        .ok_or_else(|| StatusError::bad_request().brief("No file provided"))?;
-
+        .ok_or_else(|| StatusError::bad_request().brief("No file"))?;
     let filename = file.name().unwrap_or("unnamed").to_string();
     let size = file.size();
-    let content_type = file.content_type().unwrap_or("application/octet-stream").to_string();
-
-    let dest = format!("uploads/{}", filename);
-    std::fs::copy(file.path(), &dest)
+    tokio::fs::copy(file.path(), format!("uploads/{filename}")).await
         .map_err(|_| StatusError::internal_server_error())?;
-
-    Ok(Json(UploadResult {
-        filename,
-        size,
-        content_type,
-    }))
+    Ok(Json(UploadResult { filename, size }))
 }
 ```
 
-## Complete Upload/Download Example
+## Salvo-Specific Notes
 
-```rust
-use std::path::Path;
-use salvo::fs::NamedFile;
-use salvo::prelude::*;
-
-#[handler]
-async fn index(res: &mut Response) {
-    res.render(Text::Html(r#"
-        <!DOCTYPE html>
-        <html>
-        <body>
-            <h1>File Manager</h1>
-            <h2>Upload</h2>
-            <form action="/upload" method="post" enctype="multipart/form-data">
-                <input type="file" name="file" />
-                <input type="submit" value="Upload" />
-            </form>
-            <h2>Files</h2>
-            <div id="files"></div>
-            <script>
-                fetch('/files').then(r => r.json()).then(files => {
-                    document.getElementById('files').innerHTML = files.map(f =>
-                        `<a href="/download/${f}">${f}</a><br/>`
-                    ).join('');
-                });
-            </script>
-        </body>
-        </html>
-    "#));
-}
-
-#[handler]
-async fn upload(req: &mut Request, res: &mut Response) {
-    if let Some(file) = req.file("file").await {
-        let dest = format!("uploads/{}", file.name().unwrap_or("file"));
-        std::fs::copy(file.path(), Path::new(&dest)).ok();
-        res.render(Redirect::other("/"));
-    } else {
-        res.status_code(StatusCode::BAD_REQUEST);
-        res.render("No file");
-    }
-}
-
-#[handler]
-async fn list_files() -> Json<Vec<String>> {
-    let files: Vec<String> = std::fs::read_dir("uploads")
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .map(|e| e.file_name().to_string_lossy().to_string())
-        .collect();
-    Json(files)
-}
-
-#[handler]
-async fn download(req: &mut Request, res: &mut Response) {
-    let filename: String = req.param("filename").unwrap();
-    let filepath = format!("uploads/{}", filename);
-
-    match NamedFile::builder(&filepath)
-        .attached_name(&filename)
-        .send(req.headers(), res)
-        .await
-    {
-        Ok(_) => {}
-        Err(_) => {
-            res.status_code(StatusCode::NOT_FOUND);
-        }
-    }
-}
-
-#[tokio::main]
-async fn main() {
-    std::fs::create_dir_all("uploads").unwrap();
-
-    let router = Router::new()
-        .get(index)
-        .push(Router::with_path("upload").post(upload))
-        .push(Router::with_path("files").get(list_files))
-        .push(Router::with_path("download/{filename}").get(download));
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
-```
-
-## Best Practices
-
-1. **Validate file types**: Check MIME type and extension
-2. **Limit file size**: Use `max_size()` middleware
-3. **Use unique filenames**: Prevent overwrites and conflicts
-4. **Prevent directory traversal**: Validate filenames don't contain `..`
-5. **Store outside web root**: Keep uploads in non-public directories
-6. **Implement access control**: Check permissions before downloads
-7. **Clean up temp files**: Salvo cleans up automatically, but verify
-8. **Use async I/O**: Don't block with sync file operations
-9. **Consider virus scanning**: For user-uploaded content
-10. **Set Content-Disposition**: Force download or inline display as appropriate
+- Temp multipart files live only for the request lifetime — copy them before returning.
+- Always validate `filename` against `..`, `/`, `\` before using it as a path segment.
+- `content_type()` returns `Option<Mime>`; use `.essence_str()` for a comparable string.
+- `NamedFile::content_type()` takes `mime::Mime`, not `&str`.
 
 ## Related Skills
 
 - **salvo-static-files**: Serve static files and directories
-- **salvo-data-extraction**: Extract form data alongside files
+- **salvo-data-extraction**: Form fields alongside files
 - **salvo-openapi**: Document file upload endpoints

@@ -7,11 +7,7 @@ tags: [realtime, websocket, bidirectional, chat]
 
 # Salvo WebSocket
 
-This skill helps implement WebSocket connections in Salvo applications for real-time bidirectional communication.
-
-## What is WebSocket?
-
-WebSocket provides full-duplex communication channels over a single TCP connection, enabling real-time data exchange between client and server.
+`WebSocketUpgrade` from `salvo-extra` turns a GET handler into a WebSocket endpoint. `WebSocket` implements `Stream<Item = Result<Message, Error>>` + `Sink<Message, Error = Error>`, so `StreamExt::split()`, `recv()`, and `send()` all work.
 
 ## Setup
 
@@ -20,9 +16,10 @@ WebSocket provides full-duplex communication channels over a single TCP connecti
 salvo = { version = "0.89.3", features = ["websocket"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
 ```
 
-## Basic WebSocket Echo Server
+## Echo server
 
 ```rust
 use salvo::prelude::*;
@@ -32,450 +29,214 @@ use salvo::websocket::WebSocketUpgrade;
 async fn ws_handler(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
     WebSocketUpgrade::new()
         .upgrade(req, res, |mut ws| async move {
-            // Echo back received messages
-            while let Some(msg) = ws.recv().await {
-                let msg = match msg {
-                    Ok(msg) => msg,
-                    Err(_) => return, // Client disconnected
-                };
-
+            while let Some(Ok(msg)) = ws.recv().await {
                 if ws.send(msg).await.is_err() {
-                    return; // Client disconnected
+                    return;
                 }
             }
         })
         .await
 }
 
-#[handler]
-async fn index(res: &mut Response) {
-    res.render(Text::Html(r#"
-        <!DOCTYPE html>
-        <html>
-        <body>
-            <h1>WebSocket Echo</h1>
-            <input type="text" id="msg" />
-            <button onclick="send()">Send</button>
-            <div id="output"></div>
-            <script>
-                const ws = new WebSocket(`ws://${location.host}/ws`);
-                ws.onmessage = (e) => {
-                    document.getElementById('output').innerHTML += `<p>${e.data}</p>`;
-                };
-                function send() {
-                    ws.send(document.getElementById('msg').value);
-                }
-            </script>
-        </body>
-        </html>
-    "#));
-}
-
 #[tokio::main]
 async fn main() {
-    let router = Router::new()
-        .get(index)
-        .push(Router::with_path("ws").goal(ws_handler));
-
+    let router = Router::new().push(Router::with_path("ws").goal(ws_handler));
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
 
-## WebSocket with Query Parameters
+Client: `new WebSocket('ws://host/ws')` — `<!-- minimal JS client omitted -->`.
+
+## `WebSocketUpgrade` configuration
 
 ```rust
-use salvo::prelude::*;
-use salvo::websocket::WebSocketUpgrade;
-use serde::Deserialize;
+WebSocketUpgrade::new()
+    .protocols(&["graphql-ws", "graphql-transport-ws"]) // subprotocol allowlist
+    .accept_any_protocol()           // OR: echo client's first offered protocol (don't use for auth tokens)
+    .max_message_size(1 << 20)       // default 64 MiB
+    .max_frame_size(256 * 1024)      // default 16 MiB
+    .write_buffer_size(128 * 1024)   // default 128 KiB
+    .max_write_buffer_size(usize::MAX)
+    .accept_unmasked_frames(false)
+    .upgrade(req, res, |ws| async move { /* ... */ })
+    .await
+```
 
-#[derive(Deserialize, Debug)]
-struct ConnectParams {
-    user_id: usize,
-    name: String,
-}
+Note: `accept_any_protocol()` takes precedence over `protocols()`.
+
+## Query params & pre-upgrade state
+
+Parse request data **before** `.upgrade()` — `req` isn't available inside the closure.
+
+```rust
+#[derive(serde::Deserialize, Debug, Clone)]
+struct ConnectParams { user_id: usize, name: String }
 
 #[handler]
 async fn connect(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
-    // Parse query parameters before upgrade
-    let params = req.parse_queries::<ConnectParams>();
-
+    let params = req.parse_queries::<ConnectParams>().map_err(|_| StatusError::bad_request())?;
     WebSocketUpgrade::new()
-        .upgrade(req, res, |mut ws| async move {
-            println!("User connected: {:?}", params);
-
-            while let Some(msg) = ws.recv().await {
-                match msg {
-                    Ok(msg) => {
-                        if ws.send(msg).await.is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
+        .upgrade(req, res, move |mut ws| async move {
+            tracing::info!(?params, "connected");
+            while let Some(Ok(msg)) = ws.recv().await {
+                if ws.send(msg).await.is_err() { break; }
             }
-
-            println!("User disconnected: {:?}", params);
         })
         .await
 }
 ```
 
-## Chat Room Example
+## Authenticated upgrade
+
+Authenticate on the route **before** upgrade (e.g. via a JWT hoop). The handler then reads claims from `Depot`:
+
+```rust
+#[handler]
+async fn ws_auth(req: &mut Request, depot: &mut Depot, res: &mut Response)
+    -> Result<(), StatusError>
+{
+    let user_id = depot.jwt_auth_data::<Claims>()
+        .ok_or_else(StatusError::unauthorized)?
+        .claims.user_id;
+    WebSocketUpgrade::new()
+        .upgrade(req, res, move |mut ws| async move {
+            while let Some(Ok(msg)) = ws.recv().await {
+                if ws.send(msg).await.is_err() { break; }
+            }
+            let _ = user_id;
+        })
+        .await
+}
+```
+
+## Message helpers
+
+`Message` supports `text`, `binary`, `ping`, `pong`, `close`, `close_with(code, reason)`. Pings are auto-ponged; handle `is_close()` explicitly.
+
+```rust
+while let Some(Ok(msg)) = ws.recv().await {
+    if msg.is_text() {
+        let text = msg.as_str().unwrap_or_default();
+        ws.send(Message::text(format!("echo: {text}"))).await.ok();
+    } else if msg.is_binary() {
+        ws.send(Message::binary(msg.as_bytes().to_vec())).await.ok();
+    } else if msg.is_close() {
+        break;
+    }
+}
+```
+
+`as_str()` returns `Err` for non-text messages — use `is_text()` or match on the type first.
+
+## Broadcasting pattern (channel + map of senders)
+
+Use an mpsc channel per client. The receiver is forwarded into the socket sink, so broadcasters never hold a lock while sending:
 
 ```rust
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
-
 use futures_util::{FutureExt, StreamExt};
 use salvo::prelude::*;
 use salvo::websocket::{Message, WebSocket, WebSocketUpgrade};
 use tokio::sync::{RwLock, mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-type Users = RwLock<HashMap<usize, mpsc::UnboundedSender<Result<Message, salvo::Error>>>>;
-
-static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(1);
-static ONLINE_USERS: LazyLock<Users> = LazyLock::new(Users::default);
+type Tx = mpsc::UnboundedSender<Result<Message, salvo::Error>>;
+static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
+static USERS: LazyLock<RwLock<HashMap<usize, Tx>>> = LazyLock::new(Default::default);
 
 #[handler]
 async fn chat(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
-    WebSocketUpgrade::new()
-        .upgrade(req, res, handle_socket)
-        .await
+    WebSocketUpgrade::new().upgrade(req, res, handle_socket).await
 }
 
 async fn handle_socket(ws: WebSocket) {
-    let my_id = NEXT_USER_ID.fetch_add(1, Ordering::Relaxed);
-    println!("New user connected: {}", my_id);
+    let my_id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    let (ws_tx, mut ws_rx) = ws.split();
 
-    // Split socket into sender and receiver
-    let (user_ws_tx, mut user_ws_rx) = ws.split();
-
-    // Create channel for this user
     let (tx, rx) = mpsc::unbounded_channel();
-    let rx = UnboundedReceiverStream::new(rx);
+    tokio::spawn(UnboundedReceiverStream::new(rx).forward(ws_tx).map(|_| ()));
 
-    // Forward messages from channel to WebSocket
-    let send_task = rx.forward(user_ws_tx).map(|result| {
-        if let Err(e) = result {
-            eprintln!("WebSocket send error: {:?}", e);
-        }
-    });
-    tokio::spawn(send_task);
+    USERS.write().await.insert(my_id, tx);
 
-    // Register user
-    ONLINE_USERS.write().await.insert(my_id, tx);
-
-    // Handle incoming messages
-    while let Some(result) = user_ws_rx.next().await {
-        match result {
-            Ok(msg) => {
-                if let Ok(text) = msg.as_str() {
-                    broadcast_message(my_id, text).await;
+    while let Some(Ok(msg)) = ws_rx.next().await {
+        if let Ok(text) = msg.as_str() {
+            let out = format!("<User#{my_id}>: {text}");
+            for (&uid, peer_tx) in USERS.read().await.iter() {
+                if uid != my_id {
+                    let _ = peer_tx.send(Ok(Message::text(out.clone())));
                 }
             }
-            Err(e) => {
-                eprintln!("WebSocket error: {:?}", e);
-                break;
-            }
         }
     }
 
-    // User disconnected
-    ONLINE_USERS.write().await.remove(&my_id);
-    println!("User {} disconnected", my_id);
-}
-
-async fn broadcast_message(sender_id: usize, msg: &str) {
-    let formatted = format!("<User#{}>: {}", sender_id, msg);
-
-    for (&uid, tx) in ONLINE_USERS.read().await.iter() {
-        if uid != sender_id {
-            let _ = tx.send(Ok(Message::text(formatted.clone())));
-        }
-    }
-}
-
-#[handler]
-async fn index(res: &mut Response) {
-    res.render(Text::Html(CHAT_HTML));
-}
-
-#[tokio::main]
-async fn main() {
-    let router = Router::new()
-        .get(index)
-        .push(Router::with_path("chat").goal(chat));
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
-
-static CHAT_HTML: &str = r#"<!DOCTYPE html>
-<html>
-<head><title>Chat</title></head>
-<body>
-    <h1>WebSocket Chat</h1>
-    <div id="chat"></div>
-    <input type="text" id="msg" />
-    <button onclick="send()">Send</button>
-    <script>
-        const chat = document.getElementById('chat');
-        const ws = new WebSocket(`ws://${location.host}/chat`);
-
-        ws.onopen = () => chat.innerHTML = '<p><em>Connected!</em></p>';
-        ws.onclose = () => chat.innerHTML += '<p><em>Disconnected</em></p>';
-        ws.onmessage = (e) => {
-            const p = document.createElement('p');
-            p.textContent = e.data;
-            chat.appendChild(p);
-        };
-
-        function send() {
-            const input = document.getElementById('msg');
-            ws.send(input.value);
-            const p = document.createElement('p');
-            p.textContent = '<You>: ' + input.value;
-            chat.appendChild(p);
-            input.value = '';
-        }
-    </script>
-</body>
-</html>"#;
-```
-
-## WebSocket with Authentication
-
-```rust
-use salvo::prelude::*;
-use salvo::websocket::WebSocketUpgrade;
-use salvo::jwt_auth::{ConstDecoder, JwtAuth, JwtAuthDepotExt};
-
-#[handler]
-async fn ws_authenticated(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    // Check JWT token
-    let token = depot.jwt_auth_data::<Claims>();
-    if token.is_none() {
-        return Err(StatusError::unauthorized());
-    }
-
-    let user_id = token.unwrap().claims.user_id;
-
-    WebSocketUpgrade::new()
-        .upgrade(req, res, move |mut ws| async move {
-            println!("Authenticated user {} connected", user_id);
-
-            while let Some(msg) = ws.recv().await {
-                match msg {
-                    Ok(msg) => {
-                        if ws.send(msg).await.is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-        })
-        .await
+    USERS.write().await.remove(&my_id);
 }
 ```
 
-## Handling Different Message Types
+Gotchas:
+- `ws.split()` comes from `StreamExt::split`; items flowing into the sink must be `Result<Message, salvo::Error>`, so the channel element type matches.
+- Don't hold the `RwLock` write guard across `.await` on the send side — keep the read guard short-lived.
 
-```rust
-use salvo::websocket::{Message, WebSocket};
+## Rooms
 
-async fn handle_messages(mut ws: WebSocket) {
-    while let Some(result) = ws.recv().await {
-        let msg = match result {
-            Ok(msg) => msg,
-            Err(_) => break,
-        };
+Wrap a `HashMap<String, HashMap<usize, Tx>>` in `Arc<RwLock<...>>` and share via `Depot` or a `LazyLock`. The insert/remove/broadcast pattern mirrors the flat map above.
 
-        // Handle different message types
-        if msg.is_text() {
-            let text = msg.as_str().unwrap();
-            println!("Text message: {}", text);
+## Heartbeat via `tokio::select!`
 
-            // Echo back
-            ws.send(Message::text(format!("You said: {}", text)))
-                .await
-                .ok();
-        } else if msg.is_binary() {
-            let bytes = msg.as_bytes();
-            println!("Binary message: {} bytes", bytes.len());
-
-            // Echo back
-            ws.send(Message::binary(bytes.to_vec())).await.ok();
-        } else if msg.is_ping() {
-            // Pong is sent automatically
-            println!("Ping received");
-        } else if msg.is_close() {
-            println!("Close requested");
-            break;
-        }
-    }
-}
-```
-
-## WebSocket with Room Support
-
-```rust
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use salvo::websocket::Message;
-use tokio::sync::mpsc;
-
-type Tx = mpsc::UnboundedSender<Result<Message, salvo::Error>>;
-type RoomUsers = HashMap<usize, Tx>;
-type Rooms = Arc<RwLock<HashMap<String, RoomUsers>>>;
-
-async fn join_room(rooms: &Rooms, room_name: &str, user_id: usize, tx: Tx) {
-    let mut rooms = rooms.write().await;
-    rooms
-        .entry(room_name.to_string())
-        .or_default()
-        .insert(user_id, tx);
-}
-
-async fn leave_room(rooms: &Rooms, room_name: &str, user_id: usize) {
-    let mut rooms = rooms.write().await;
-    if let Some(room) = rooms.get_mut(room_name) {
-        room.remove(&user_id);
-        if room.is_empty() {
-            rooms.remove(room_name);
-        }
-    }
-}
-
-async fn broadcast_to_room(
-    rooms: &Rooms,
-    room_name: &str,
-    sender_id: usize,
-    message: &str,
-) {
-    let rooms = rooms.read().await;
-    if let Some(room) = rooms.get(room_name) {
-        for (&uid, tx) in room.iter() {
-            if uid != sender_id {
-                let _ = tx.send(Ok(Message::text(message.to_string())));
-            }
-        }
-    }
-}
-```
-
-## Heartbeat/Keep-Alive
+Client pings are auto-ponged; use server-side pings only if you need to detect silent peers.
 
 ```rust
 use std::time::Duration;
-use salvo::websocket::{Message, WebSocket};
+use futures_util::{SinkExt, StreamExt};
 use tokio::time::interval;
 
-async fn handle_with_heartbeat(ws: WebSocket) {
+async fn with_heartbeat(ws: salvo::websocket::WebSocket) {
+    use salvo::websocket::Message;
     let (mut tx, mut rx) = ws.split();
-
-    // Heartbeat task
-    let heartbeat = async move {
-        let mut interval = interval(Duration::from_secs(30));
+    let hb = async move {
+        let mut ticker = interval(Duration::from_secs(30));
         loop {
-            interval.tick().await;
-            if tx.send(Message::ping(vec![])).await.is_err() {
-                break;
-            }
+            ticker.tick().await;
+            if tx.send(Message::ping(Vec::new())).await.is_err() { break; }
         }
     };
-
-    // Message handling task
-    let messages = async move {
-        while let Some(msg) = rx.next().await {
-            match msg {
-                Ok(msg) if msg.is_pong() => {
-                    println!("Pong received");
-                }
-                Ok(msg) => {
-                    // Handle other messages
-                }
-                Err(_) => break,
-            }
+    let recv = async move {
+        while let Some(Ok(msg)) = rx.next().await {
+            if msg.is_close() { break; }
         }
     };
-
-    // Run both tasks concurrently
-    tokio::select! {
-        _ = heartbeat => {},
-        _ = messages => {},
-    }
+    tokio::select! { _ = hb => {}, _ = recv => {} }
 }
 ```
 
-## WebSocket with JSON Messages
+## JSON messages
 
 ```rust
-use salvo::websocket::{Message, WebSocket};
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type")]
-enum WsMessage {
+enum WsMsg {
     Chat { content: String },
     Join { room: String },
-    Leave { room: String },
-    Typing { user: String },
 }
 
-async fn handle_json_messages(mut ws: WebSocket) {
-    while let Some(result) = ws.recv().await {
-        let msg = match result {
-            Ok(msg) => msg,
-            Err(_) => break,
-        };
-
-        if let Ok(text) = msg.as_str() {
-            if let Ok(ws_msg) = serde_json::from_str::<WsMessage>(text) {
-                match ws_msg {
-                    WsMessage::Chat { content } => {
-                        println!("Chat: {}", content);
-                    }
-                    WsMessage::Join { room } => {
-                        println!("Joining room: {}", room);
-                    }
-                    WsMessage::Leave { room } => {
-                        println!("Leaving room: {}", room);
-                    }
-                    WsMessage::Typing { user } => {
-                        println!("{} is typing...", user);
-                    }
-                }
-            }
-        }
-    }
+// Decode:
+if let Ok(text) = msg.as_str() {
+    if let Ok(parsed) = serde_json::from_str::<WsMsg>(text) { /* ... */ }
 }
-
-// Send JSON message
-async fn send_json<T: Serialize>(ws: &mut WebSocket, msg: &T) -> Result<(), salvo::Error> {
-    let json = serde_json::to_string(msg).unwrap();
-    ws.send(Message::text(json)).await
-}
+// Encode:
+let json = serde_json::to_string(&WsMsg::Chat { content: "hi".into() }).unwrap();
+ws.send(salvo::websocket::Message::text(json)).await.ok();
 ```
 
-## Best Practices
+## Gotchas
 
-1. **Handle disconnections gracefully**: Always check for errors when sending/receiving
-2. **Use channels for broadcasting**: Don't hold locks while sending messages
-3. **Implement heartbeat**: Detect dead connections with ping/pong
-4. **Validate messages**: Don't trust client input
-5. **Limit message size**: Prevent memory exhaustion
-6. **Use JSON for structured data**: Makes debugging easier
-7. **Clean up on disconnect**: Remove users from rooms/lists
-8. **Consider backpressure**: Handle slow consumers appropriately
+- `recv()` returns `None` once the stream ends — always exit the loop.
+- `upgrade()` spawns the callback as a separate task; anything captured must be `Send + 'static`.
+- `Sec-WebSocket-Protocol` is echoed to clients — never put secrets in it.
+- If the client omits `Sec-WebSocket-Version: 13` or the `Upgrade`/`Connection` headers, `upgrade()` returns `StatusError::bad_request`.
 
 ## Related Skills
 

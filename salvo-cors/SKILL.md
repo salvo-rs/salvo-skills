@@ -7,31 +7,26 @@ tags: [security, cors, cross-origin, headers]
 
 # Salvo CORS Configuration
 
-This skill helps configure CORS and security headers in Salvo applications.
-
-## Understanding CORS
-
-CORS (Cross-Origin Resource Sharing) is a browser security feature that restricts web pages from making requests to different domains. Without proper CORS configuration, browsers will block cross-origin requests to your API.
-
-## Setup
-
 ```toml
 [dependencies]
 salvo = { version = "0.89.3", features = ["cors"] }
 ```
 
-## Basic CORS Configuration
+`Cors` is a builder; terminate with `.into_handler()` to get a `CorsHandler` you can `hoop` onto a router.
+
+## Basic Configuration
 
 ```rust
 use salvo::cors::Cors;
+use salvo::http::Method;
 use salvo::prelude::*;
 
 #[tokio::main]
 async fn main() {
     let cors = Cors::new()
         .allow_origin("https://example.com")
-        .allow_methods(vec!["GET", "POST", "PUT", "DELETE"])
-        .allow_headers(vec!["Content-Type", "Authorization"])
+        .allow_methods(vec![Method::GET, Method::POST, Method::PUT, Method::DELETE])
+        .allow_headers(vec!["content-type", "authorization"])
         .into_handler();
 
     let router = Router::new()
@@ -43,61 +38,70 @@ async fn main() {
 }
 
 #[handler]
-async fn api_handler() -> &'static str {
-    "Hello from API"
-}
+async fn api_handler() -> &'static str { "Hello from API" }
 ```
 
-## Allow All Origins (Development)
+## Permissive Presets
 
 ```rust
-use salvo::cors::Cors;
+use salvo::cors::{Any, Cors};
 
-// WARNING: Only use in development
+// Any origin, methods, headers, exposed headers. Does not allow credentials.
+let cors = Cors::permissive().into_handler();
+
+// Mirror-request variant that ALSO allows credentials. Prints a warning.
+// Only safe for tightly-controlled deployments.
+let cors = Cors::very_permissive().into_handler();
+
+// Manual wildcard
 let cors = Cors::new()
-    .allow_origin("*")
-    .allow_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-    .allow_headers(vec!["*"])
+    .allow_origin(Any)
+    .allow_methods(Any)
+    .allow_headers(Any)
     .into_handler();
 ```
 
-## Production CORS Configuration
+## Production Configuration
 
 ```rust
 use salvo::cors::Cors;
 use salvo::http::Method;
 
 let cors = Cors::new()
-    // Specific allowed origins
     .allow_origin(["https://app.example.com", "https://admin.example.com"])
-    // Allowed HTTP methods
     .allow_methods(vec![Method::GET, Method::POST, Method::PUT, Method::DELETE])
-    // Allowed request headers
-    .allow_headers(vec!["Authorization", "Content-Type", "X-Requested-With"])
-    // Allow credentials (cookies, auth headers)
+    .allow_headers(vec!["authorization", "content-type", "x-requested-with"])
+    .expose_headers(vec!["x-request-id"])
     .allow_credentials(true)
-    // Cache preflight requests for 1 hour
-    .max_age(3600)
+    .max_age(3600) // seconds, or pass a Duration
     .into_handler();
 ```
 
-## Permissive CORS
+## Dynamic Origins
 
-Use the built-in permissive preset for quick setup:
+Use `AllowOrigin::dynamic` — the closure signature is `Fn(Option<&HeaderValue>, &Request, &Depot) -> Option<HeaderValue>`. Return `Some(origin)` to accept, `None` to reject.
 
 ```rust
-use salvo::cors::Cors;
+use salvo::cors::{AllowOrigin, Cors};
+use salvo::http::HeaderValue;
 
-let cors = Cors::permissive();
-
-let router = Router::new()
-    .hoop(cors)
-    .get(handler);
+let cors = Cors::new()
+    .allow_origin(AllowOrigin::dynamic(|origin, _req, _depot| {
+        let o = origin?.to_str().ok()?;
+        if o.ends_with(".example.com") || o == "https://example.com" {
+            HeaderValue::from_str(o).ok()
+        } else {
+            None
+        }
+    }))
+    .allow_methods(vec!["GET", "POST"])
+    .allow_credentials(true)
+    .into_handler();
 ```
 
-## CORS with Specific Routes
+`AllowOrigin::mirror_request()` reflects any origin header back (credentials-safe alternative to `*`).
 
-Apply CORS only to API routes:
+## Scoped CORS
 
 ```rust
 let cors = Cors::new()
@@ -108,164 +112,51 @@ let cors = Cors::new()
 let router = Router::new()
     .push(
         Router::with_path("api")
-            .hoop(cors)  // CORS only for /api routes
+            .hoop(cors)
             .push(Router::with_path("users").get(list_users))
-            .push(Router::with_path("posts").get(list_posts))
+            .push(Router::with_path("posts").get(list_posts)),
     )
-    .push(
-        Router::with_path("health")
-            .get(health_check)  // No CORS needed
-    );
+    .push(Router::with_path("health").get(health_check));
 ```
 
-## Security Headers Middleware
+## Security Headers
 
-Add security headers to protect against common attacks:
+`salvo-cors` only handles CORS. Add other security headers with a small custom handler:
 
 ```rust
 use salvo::prelude::*;
 
 #[handler]
-async fn security_headers(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
-    // Content Security Policy - prevent XSS
-    res.headers_mut().insert(
-        "Content-Security-Policy",
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'".parse().unwrap()
-    );
-
-    // HTTP Strict Transport Security - force HTTPS
-    res.headers_mut().insert(
-        "Strict-Transport-Security",
-        "max-age=31536000; includeSubDomains; preload".parse().unwrap()
-    );
-
-    // Prevent clickjacking
-    res.headers_mut().insert(
-        "X-Frame-Options",
-        "DENY".parse().unwrap()
-    );
-
-    // Prevent MIME type sniffing
-    res.headers_mut().insert(
-        "X-Content-Type-Options",
-        "nosniff".parse().unwrap()
-    );
-
-    // XSS Protection
-    res.headers_mut().insert(
-        "X-XSS-Protection",
-        "1; mode=block".parse().unwrap()
-    );
-
-    // Referrer Policy
-    res.headers_mut().insert(
-        "Referrer-Policy",
-        "strict-origin-when-cross-origin".parse().unwrap()
-    );
-
-    ctrl.call_next(req, depot, res).await;
+async fn security_headers(res: &mut Response) {
+    let h = res.headers_mut();
+    h.insert("content-security-policy", "default-src 'self'".parse().unwrap());
+    h.insert("strict-transport-security", "max-age=31536000; includeSubDomains".parse().unwrap());
+    h.insert("x-frame-options", "DENY".parse().unwrap());
+    h.insert("x-content-type-options", "nosniff".parse().unwrap());
+    h.insert("referrer-policy", "strict-origin-when-cross-origin".parse().unwrap());
 }
 ```
 
-## Complete Example with CORS and Security Headers
+## Builder Options
 
-```rust
-use salvo::cors::Cors;
-use salvo::http::Method;
-use salvo::prelude::*;
-
-#[handler]
-async fn security_headers(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
-    res.headers_mut().insert("X-Content-Type-Options", "nosniff".parse().unwrap());
-    res.headers_mut().insert("X-Frame-Options", "DENY".parse().unwrap());
-    res.headers_mut().insert("X-XSS-Protection", "1; mode=block".parse().unwrap());
-    ctrl.call_next(req, depot, res).await;
-}
-
-#[handler]
-async fn api_handler() -> Json<serde_json::Value> {
-    Json(serde_json::json!({"status": "ok"}))
-}
-
-#[tokio::main]
-async fn main() {
-    // CORS configuration
-    let cors = Cors::new()
-        .allow_origin(["https://app.example.com"])
-        .allow_methods(vec![Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_headers(vec!["Authorization", "Content-Type"])
-        .allow_credentials(true)
-        .max_age(86400)
-        .into_handler();
-
-    let router = Router::new()
-        .hoop(security_headers)  // Apply security headers globally
-        .hoop(cors)               // Apply CORS globally
-        .push(Router::with_path("api").get(api_handler));
-
-    let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
-    Server::new(acceptor).serve(router).await;
-}
-```
-
-## Dynamic CORS Origins
-
-Allow origins based on request:
-
-```rust
-use salvo::cors::Cors;
-use salvo::prelude::*;
-
-fn create_cors() -> Cors {
-    Cors::new()
-        .allow_origin(|origin: &str, _req: &Request| {
-            // Allow any subdomain of example.com
-            origin.ends_with(".example.com") || origin == "https://example.com"
-        })
-        .allow_methods(vec!["GET", "POST"])
-        .allow_credentials(true)
-}
-```
-
-## CORS Configuration Options
-
-| Option | Description |
+| Method | Description |
 |--------|-------------|
-| `allow_origin()` | Origins allowed to make requests |
-| `allow_methods()` | HTTP methods allowed |
-| `allow_headers()` | Request headers allowed |
-| `expose_headers()` | Response headers exposed to browser |
-| `allow_credentials()` | Allow cookies and auth headers |
-| `max_age()` | Cache preflight response (seconds) |
+| `allow_origin(impl Into<AllowOrigin>)` | Exact string, list, `Any`, or `AllowOrigin::dynamic`/`dynamic_async`/`mirror_request` |
+| `allow_methods(impl Into<AllowMethods>)` | Vec of `Method` or str, or `Any` |
+| `allow_headers(impl Into<AllowHeaders>)` | Vec of header names, `Any`, or `AllowHeaders::mirror_request()` |
+| `expose_headers(...)` | Response headers readable by the browser |
+| `allow_credentials(bool)` | Include cookies / auth headers |
+| `max_age(u64 or Duration)` | Cache preflight response |
+| `allow_private_network(bool)` | Opt into private network access preflights |
+| `vary(...)` | Extra `Vary` headers |
+| `into_handler()` | Build the `CorsHandler` (required) |
 
-## Troubleshooting CORS Issues
+## Salvo-specific Notes
 
-### Common Problems
-
-1. **Missing OPTIONS handler**: CORS preflight uses OPTIONS method
-2. **Credentials with wildcard origin**: Cannot use `*` with `allow_credentials(true)`
-3. **Missing headers**: Ensure all required headers are in `allow_headers()`
-
-### Debug CORS
-
-```rust
-#[handler]
-async fn cors_debug(req: &Request) {
-    println!("Origin: {:?}", req.header::<String>("Origin"));
-    println!("Method: {}", req.method());
-    println!("Headers: {:?}", req.headers());
-}
-```
-
-## Best Practices
-
-1. **Specify exact origins in production**: Avoid `*` for security
-2. **Limit allowed methods**: Only enable methods your API uses
-3. **Validate headers**: Only allow headers you need
-4. **Use HTTPS**: Always use HTTPS in production
-5. **Set appropriate max_age**: Balance security and performance
-6. **Apply security headers**: Add CSP, HSTS, X-Frame-Options
-7. **Test preflight requests**: Verify OPTIONS requests work correctly
+- `Cors` is a builder; forgetting `.into_handler()` will not compile when passed to `.hoop()`.
+- Combining `allow_credentials(true)` with any wildcard (`Any` on origin/methods/headers/expose_headers) panics at `into_handler()` time. Use an explicit list or `mirror_request()` instead.
+- `Cors::very_permissive()` intentionally logs a warning on construction — do not ship it.
+- Header names passed to `allow_headers` are case-insensitive, but lowercase is conventional.
 
 ## Related Skills
 
