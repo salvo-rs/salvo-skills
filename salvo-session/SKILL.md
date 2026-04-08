@@ -173,15 +173,16 @@ let session_handler = SessionHandler::builder(
 .cookie_path("/")
 // Cookie domain (optional)
 // .cookie_domain("example.com")
-// Secure cookie (HTTPS only)
-.cookie_secure(true)
-// HTTP only (no JavaScript access)
-.cookie_http_only(true)
 // Same site policy
-.cookie_same_site(salvo::http::cookie::SameSite::Strict)
+.same_site_policy(salvo::http::cookie::SameSite::Strict)
 .build()
 .unwrap();
 ```
+
+> **Note:** `SessionHandler` automatically sets the session cookie's `HttpOnly`
+> flag to `true`, and the `Secure` flag is toggled on whenever the incoming
+> request is served over HTTPS. There are no `cookie_http_only` or
+> `cookie_secure` builder methods — these behaviors are handled for you.
 
 ## Complete Login Example
 
@@ -406,9 +407,9 @@ async fn clear_cart(depot: &mut Depot, res: &mut Response) {
 
 1. **Use secure secret keys**: Generate 64 random bytes for session encryption
 2. **Set appropriate TTL**: Balance security with user convenience
-3. **Use HTTPS**: Always use secure cookies in production
-4. **Set HttpOnly**: Prevent JavaScript access to session cookies
-5. **Use SameSite**: Protect against CSRF attacks
+3. **Use HTTPS**: The `Secure` flag is added automatically for HTTPS requests
+4. **HttpOnly is enforced**: The session cookie is always set as `HttpOnly`, so it cannot be accessed from JavaScript
+5. **Use SameSite**: Configure `same_site_policy` to protect against CSRF attacks
 6. **Validate session data**: Don't trust session data blindly
 7. **Regenerate session on login**: Prevent session fixation attacks
 8. **Clean up on logout**: Remove all sensitive session data
