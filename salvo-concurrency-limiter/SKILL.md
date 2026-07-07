@@ -1,7 +1,7 @@
 ---
 name: salvo-concurrency-limiter
 description: Limit concurrent requests to protect resources. Use for file uploads, expensive operations, and preventing resource exhaustion.
-version: 0.89.3
+version: 0.94.0
 tags: [performance, concurrency, limiter]
 ---
 
@@ -15,7 +15,7 @@ Lives in `salvo-extra`; enable the feature:
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["concurrency-limiter"] }
+salvo = { version = "0.94.0", features = ["concurrency-limiter"] }
 ```
 
 Import path: `salvo::concurrency_limiter::{max_concurrency, MaxConcurrency}`.

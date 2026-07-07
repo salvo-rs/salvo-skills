@@ -1,7 +1,7 @@
 ---
 name: salvo-graceful-shutdown
 description: Implement graceful server shutdown to handle in-flight requests before stopping. Use for zero-downtime deployments and proper resource cleanup.
-version: 0.89.3
+version: 0.94.0
 tags: [operations, shutdown, deployment]
 ---
 
@@ -9,11 +9,11 @@ tags: [operations, shutdown, deployment]
 
 Graceful shutdown lives in `salvo-core` behind the `server-handle` feature,
 which is on by default when you enable `server`. No extra feature flag needed
-for the default `salvo = "0.89.3"` dependency.
+for the default `salvo = "0.94.0"` dependency.
 
 ```toml
 [dependencies]
-salvo = "0.89.3"
+salvo = "0.94.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -24,7 +24,9 @@ tokio = { version = "1", features = ["full"] }
 - `ServerHandle::stop_graceful(impl Into<Option<Duration>>)` — waits for
   in-flight requests; `None` waits indefinitely, `Some(dur)` forces stop after
   `dur`.
-- `ServerHandle::stop_forcible()` — immediate stop, no waiting.
+- `ServerHandle::stop_forceful()` — immediate stop, no waiting.
+- `Server::max_connections(max)` — caps concurrent accepted connections before
+  the server applies backpressure to the listen backlog.
 
 `ServerHandle` is `Clone + Send`, so spawn a task that listens for signals and
 calls `stop_graceful` on it.
@@ -44,7 +46,7 @@ async fn main() {
     let router = Router::new().get(hello);
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
 
-    let server = Server::new(acceptor);
+    let server = Server::new(acceptor).max_connections(10_000);
     let handle = server.handle();
     tokio::spawn(shutdown_signal(handle));
 

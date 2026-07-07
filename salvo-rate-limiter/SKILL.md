@@ -1,7 +1,7 @@
 ---
 name: salvo-rate-limiter
 description: Implement rate limiting to protect APIs from abuse. Use for preventing DDoS attacks and ensuring fair resource usage.
-version: 0.89.3
+version: 0.94.0
 tags: [security, rate-limiting, throttling]
 ---
 
@@ -9,7 +9,7 @@ tags: [security, rate-limiting, throttling]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["rate-limiter"] }
+salvo = { version = "0.94.0", features = ["rate-limiter"] }
 ```
 
 ## Components
@@ -18,7 +18,7 @@ A `RateLimiter` combines four pieces:
 
 | Component | Purpose | Built-ins |
 |-----------|---------|-----------|
-| `RateIssuer` | Identify client | `RemoteIpIssuer`, `RealIpIssuer` |
+| `RateIssuer` | Identify client | `RemoteIpIssuer`, `TrustedProxyIssuer` |
 | `RateGuard` | Limiting algorithm | `FixedGuard` (needs `BasicQuota`), `SlidingGuard` (needs `CelledQuota`) |
 | `RateStore` | Persist state | `MokaStore` |
 | `QuotaGetter` | Lookup quota for key | any `Clone` `Quota`, or custom impl |
@@ -78,19 +78,24 @@ let limiter = RateLimiter::new(
 
 ## Behind a reverse proxy
 
-`RemoteIpIssuer` uses the direct connection IP (the proxy). Use `RealIpIssuer` to read `X-Forwarded-For` / `X-Real-IP`:
+`RemoteIpIssuer` uses the direct connection IP, which is usually the proxy's address. Use `TrustedProxyIssuer` to read `X-Forwarded-For` / `X-Real-IP` only when the direct peer is one of your configured proxies:
 
 ```rust
-use salvo::rate_limiter::RealIpIssuer;
+use std::net::IpAddr;
+use salvo::rate_limiter::{BasicQuota, FixedGuard, MokaStore, RateLimiter, TrustedProxyIssuer};
 
 let limiter = RateLimiter::new(
-    FixedGuard::default(), MokaStore::default(),
-    RealIpIssuer::new(),
+    FixedGuard::default(),
+    MokaStore::default(),
+    TrustedProxyIssuer::new([
+        "10.0.0.5".parse::<IpAddr>().unwrap(),
+        "10.0.0.6".parse::<IpAddr>().unwrap(),
+    ]),
     BasicQuota::per_minute(100),
 );
 ```
 
-WARNING: only use `RealIpIssuer` behind a TRUSTED proxy that overwrites these headers, otherwise clients can forge them.
+Do not use the deprecated `ForwardedHeaderIssuer` for public services; it trusts client-controlled forwarded headers even when the request reaches Salvo directly.
 
 ## Custom issuer (user ID / API key)
 

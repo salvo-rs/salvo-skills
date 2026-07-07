@@ -1,7 +1,7 @@
 ---
 name: salvo-csrf
 description: Implement CSRF (Cross-Site Request Forgery) protection using cookie or session storage. Use for protecting forms and state-changing endpoints.
-version: 0.89.3
+version: 0.94.0
 tags: [security, csrf, protection]
 ---
 
@@ -9,7 +9,7 @@ tags: [security, csrf, protection]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["csrf"] }
+salvo = { version = "0.94.0", features = ["csrf"] }
 ```
 
 ## Ciphers
@@ -26,7 +26,8 @@ Each cipher pairs with a store: `*_cookie_csrf(...)` or `*_session_csrf(...)`. S
 ## Basic: Cookie Store + Form Token
 
 ```rust
-use salvo::csrf::{bcrypt_cookie_csrf, CsrfDepotExt, FormFinder};
+use salvo::csrf::{CookieStore, Csrf, BcryptCipher, CsrfDepotExt, FormFinder};
+use salvo::http::SecureCookiePolicy;
 use salvo::prelude::*;
 use serde::Deserialize;
 
@@ -56,12 +57,18 @@ async fn handle_form(req: &mut Request, res: &mut Response) {
 
 #[tokio::main]
 async fn main() {
-    let csrf = bcrypt_cookie_csrf(FormFinder::new("csrf_token"));
+    let csrf = Csrf::new(
+        BcryptCipher::new(),
+        CookieStore::new().secure_cookie_policy(SecureCookiePolicy::Always),
+        FormFinder::new("csrf_token"),
+    );
     let router = Router::new().hoop(csrf).get(show_form).post(handle_form);
     let acceptor = TcpListener::new("0.0.0.0:8080").bind().await;
     Server::new(acceptor).serve(router).await;
 }
 ```
+
+For local HTTP-only examples, `bcrypt_cookie_csrf(FormFinder::new(...))` is the shortest constructor. In production behind TLS termination, prefer an explicit `CookieStore` with `.secure(true)` or `.secure_cookie_policy(SecureCookiePolicy::Always)`.
 
 ## Cipher Variants
 
@@ -174,6 +181,7 @@ fetch('/api', {
 ## Salvo-specific Notes
 
 - CSRF middleware only checks "unsafe" methods (POST/PUT/PATCH/DELETE); GET/HEAD/OPTIONS bypass validation and refresh the token.
+- Cookie-backed CSRF uses `SecureCookiePolicy::AutoFromScheme` by default. Force secure cookies when TLS is terminated before Salvo.
 - Session-backed variants require `SessionHandler` hooped **before** the CSRF handler, otherwise the store cannot locate a session.
 - When pairing with `salvo-cors`, CSRF headers (e.g. `x-csrf-token`) must be listed in `allow_headers`.
 

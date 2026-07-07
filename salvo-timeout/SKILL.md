@@ -1,7 +1,7 @@
 ---
 name: salvo-timeout
 description: Configure request timeouts to prevent slow requests from blocking resources. Use for protecting APIs from long-running operations.
-version: 0.89.3
+version: 0.94.0
 tags: [performance, timeout, request-timeout]
 ---
 
@@ -11,7 +11,7 @@ tags: [performance, timeout, request-timeout]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["timeout"] }
+salvo = { version = "0.94.0", features = ["timeout"] }
 ```
 
 `Timeout` is re-exported via `salvo::prelude::Timeout`.

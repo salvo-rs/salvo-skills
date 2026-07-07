@@ -1,7 +1,7 @@
 ---
 name: salvo-middleware
 description: Implement middleware for authentication, logging, CORS, and request processing. Use for cross-cutting concerns and request/response modification.
-version: 0.89.3
+version: 0.94.0
 tags: [core, middleware, hoop, flow-ctrl]
 ---
 
@@ -97,10 +97,12 @@ Depot API:
 
 - `depot.insert(key, value)` — stores by string key
 - `depot.get::<V>(key)` — returns `Result<&V, Option<&Box<dyn Any>>>`
-- `depot.inject(value)` — stores by type (single value per type)
-- `depot.obtain::<V>()` — retrieves by type, returns `Result`
+- `depot.insert_typed(value)` — stores by type (single value per type)
+- `depot.get_typed::<V>()` — retrieves by type, returns `Result`
+- `depot.get_typed_mut::<V>()` — retrieves a mutable typed value
+- `depot.remove_typed::<V>()` — removes and returns a typed value
 
-Prefer `inject` / `obtain` when the type itself is the key; use `insert` / `get` when you need multiple values of the same type distinguished by name.
+Prefer `insert_typed` / `get_typed` when the type itself is the key; use `insert` / `get` when you need multiple values of the same type distinguished by name. The old `inject` / `obtain` aliases are deprecated in Salvo 0.94.
 
 ## Early response
 

@@ -1,7 +1,7 @@
 ---
 name: salvo-flash
 description: Implement flash messages for one-time notifications across redirects. Use for success/error messages after form submissions.
-version: 0.89.3
+version: 0.94.0
 tags: [advanced, flash-messages, notifications]
 ---
 
@@ -9,7 +9,7 @@ tags: [advanced, flash-messages, notifications]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["flash"] }
+salvo = { version = "0.94.0", features = ["flash"] }
 ```
 
 `FlashHandler` middleware stores messages between requests. The set
@@ -91,20 +91,25 @@ for msg in flash.iter() {
 ## `CookieStore` configuration
 
 Builders on `CookieStore` (all `#[must_use]`): `name`, `max_age`, `same_site`,
-`http_only`, `path`. Defaults: name `"salvo.flash"`, `max_age = 60s`,
-`SameSite::Lax`, `http_only = true`, `path = "/"`.
+`secure`, `secure_cookie_policy`, `http_only`, `path`, `key`. Defaults: name
+`"salvo.flash"`, `max_age = 60s`, `SameSite::Lax`,
+`SecureCookiePolicy::AutoFromScheme`, `http_only = true`, `path = "/"`.
 
 ```rust
+use salvo::http::SecureCookiePolicy;
 use salvo::http::cookie::{time::Duration, SameSite};
 
 let store = CookieStore::new()
     .name("app.flash")
     .max_age(Duration::seconds(300))
     .same_site(SameSite::Strict)
+    .secure_cookie_policy(SecureCookiePolicy::Always)
     .path("/app");
 
 let router = Router::new().hoop(store.into_handler());
 ```
+
+Use `.secure(true)` or `.secure_cookie_policy(SecureCookiePolicy::Always)` when TLS terminates before Salvo and flash cookies must still carry the `Secure` attribute.
 
 ## Session store
 

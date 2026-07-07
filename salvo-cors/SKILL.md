@@ -1,7 +1,7 @@
 ---
 name: salvo-cors
 description: Configure Cross-Origin Resource Sharing (CORS) and security headers. Use for APIs accessed from browsers on different domains.
-version: 0.89.3
+version: 0.94.0
 tags: [security, cors, cross-origin, headers]
 ---
 
@@ -9,7 +9,7 @@ tags: [security, cors, cross-origin, headers]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["cors"] }
+salvo = { version = "0.94.0", features = ["cors"] }
 ```
 
 `Cors` is a builder; terminate with `.into_handler()` to get a `CorsHandler` you can `hoop` onto a router.
@@ -154,7 +154,8 @@ async fn security_headers(res: &mut Response) {
 ## Salvo-specific Notes
 
 - `Cors` is a builder; forgetting `.into_handler()` will not compile when passed to `.hoop()`.
-- Combining `allow_credentials(true)` with any wildcard (`Any` on origin/methods/headers/expose_headers) panics at `into_handler()` time. Use an explicit list or `mirror_request()` instead.
+- Combining static `allow_credentials(true)` with any wildcard (`Any` on origin/methods/headers/expose_headers) panics at `into_handler()` time. Use an explicit list or `mirror_request()` instead.
+- With dynamic credentials policies or downstream handlers that set wildcard CORS headers, Salvo drops `Access-Control-Allow-Credentials: true` rather than returning an unsafe wildcard-plus-credentials response.
 - `Cors::very_permissive()` intentionally logs a warning on construction — do not ship it.
 - Header names passed to `allow_headers` are case-insensitive, but lowercase is conventional.
 

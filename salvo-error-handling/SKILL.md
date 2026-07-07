@@ -1,7 +1,7 @@
 ---
 name: salvo-error-handling
 description: Handle errors gracefully with custom error types, status codes, and error pages. Use for building robust APIs with proper error responses.
-version: 0.89.3
+version: 0.94.0
 tags: [core, error-handling, status-code]
 ---
 
@@ -34,7 +34,7 @@ Chainable setters: `.brief(...)`, `.detail(...)`, `.cause(err)`. Note: no `not_m
 Enable the feature, then return `anyhow::Error` / `eyre::Report` directly:
 
 ```toml
-salvo = { version = "0.89.3", features = ["anyhow", "eyre"] }
+salvo = { version = "0.94.0", features = ["anyhow", "eyre"] }
 ```
 
 ```rust
@@ -148,7 +148,7 @@ async fn handler(req: &mut Request) -> Result<String, StatusError> {
 
 - `StatusError` has no `not_modified()` / `continue_()` / other 1xx–3xx constructors. Only 4xx and 5xx. Use `res.status_code(...)` for others.
 - `Catcher` only runs when the body is empty and status is an error. Writing any body skips it.
-- `depot.obtain::<T>()` returns `Result<&T, _>`, not `Option`.
+- `depot.get_typed::<T>()` returns `Result<&T, _>`, not `Option`.
 
 ## Related Skills
 

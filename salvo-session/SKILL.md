@@ -1,7 +1,7 @@
 ---
 name: salvo-session
 description: Implement session management for user state persistence. Use for login systems, shopping carts, and user preferences.
-version: 0.89.3
+version: 0.94.0
 tags: [security, session, cookie, login]
 ---
 
@@ -9,7 +9,7 @@ tags: [security, session, cookie, login]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["session"] }
+salvo = { version = "0.94.0", features = ["session"] }
 ```
 
 ## Basic Setup
@@ -100,6 +100,7 @@ SessionHandler::builder(MemoryStore::new(), secret).build().unwrap();
 
 ```rust
 use std::time::Duration;
+use salvo::http::SecureCookiePolicy;
 use salvo::http::cookie::SameSite;
 use salvo::session::{CookieStore, SessionHandler};
 
@@ -109,13 +110,14 @@ let handler = SessionHandler::builder(CookieStore::new(), secret)
     .cookie_path("/")
     .cookie_domain("example.com")
     .same_site_policy(SameSite::Strict)
+    .secure_cookie_policy(SecureCookiePolicy::Always)
     .build()
     .unwrap();
 ```
 
-Available builder methods: `session_ttl`, `cookie_name`, `cookie_path`, `cookie_domain`, `same_site_policy`, `save_unchanged`, `fallback_keys`, `add_fallback_key`.
+Available builder methods: `session_ttl`, `cookie_name`, `cookie_path`, `cookie_domain`, `same_site_policy`, `secure_cookie`, `secure_cookie_policy`, `save_unchanged`, `fallback_keys`, `add_fallback_key`.
 
-**Gotcha:** there is no `cookie_http_only` or `cookie_secure` builder. `HttpOnly` is always set to `true`, and `Secure` is toggled on automatically when the request is served over HTTPS. The `SameSite` default is `Lax`.
+**Gotcha:** there is no `cookie_http_only` builder; `HttpOnly` is always set to `true`. `Secure` defaults to `SecureCookiePolicy::AutoFromScheme`; call `.secure_cookie(true)` or `.secure_cookie_policy(SecureCookiePolicy::Always)` when TLS terminates before Salvo and the request scheme appears as HTTP. `SameSite::None` session cookies are always sent with `Secure`.
 
 ## Session with Authentication Middleware
 

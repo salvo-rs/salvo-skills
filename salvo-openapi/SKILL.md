@@ -1,7 +1,7 @@
 ---
 name: salvo-openapi
 description: Generate OpenAPI documentation automatically from Salvo handlers. Use for API documentation, Swagger UI, and API client generation.
-version: 0.89.3
+version: 0.94.0
 tags: [advanced, openapi, swagger, documentation]
 ---
 
@@ -9,7 +9,7 @@ tags: [advanced, openapi, swagger, documentation]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["oapi"] }
+salvo = { version = "0.94.0", features = ["oapi"] }
 serde = { version = "1", features = ["derive"] }
 ```
 
@@ -125,6 +125,10 @@ struct User {
 
 ## Query structs with `ToParameters`
 
+`ToParameters` defaults generated struct fields to query parameters in Salvo
+0.94, and path parameters are always serialized as `required: true` to match
+OpenAPI 3.1.
+
 ```rust
 use salvo::oapi::ToParameters;
 use serde::Deserialize;
@@ -174,6 +178,10 @@ async fn get_user(id: PathParam<i64>) -> Result<Json<User>, StatusError> {
 
 ## OpenApi metadata
 
+Salvo 0.94 emits OpenAPI 3.1 `jsonSchemaDialect` for the top-level schema
+dialect. Routes without an HTTP method filter are skipped during OpenAPI
+generation instead of being expanded to every method.
+
 `OpenApi` itself only exposes `info()`, `servers()`, `security()`,
 `add_security_scheme()`, `tags()`, and `merge_router()`. There is **no**
 `description()` / `contact_name()` / `license_name()` on `OpenApi` — set them on
@@ -191,6 +199,9 @@ let doc = OpenApi::new("My API", "1.0.0")
     )
     .merge_router(&router);
 ```
+
+When constructing parameters manually, use `Parameter::location(...)`.
+`Parameter::parameter_in(...)` is deprecated in Salvo 0.94.
 
 ## Swagger UI
 
