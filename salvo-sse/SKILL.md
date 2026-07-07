@@ -1,7 +1,7 @@
 ---
 name: salvo-sse
 description: Implement Server-Sent Events for real-time server-to-client updates. Use for live feeds, notifications, and streaming data.
-version: 0.89.3
+version: 0.94.0
 tags: [realtime, sse, server-sent-events, streaming]
 ---
 
@@ -13,7 +13,7 @@ tags: [realtime, sse, server-sent-events, streaming]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["sse"] }
+salvo = { version = "0.94.0", features = ["sse"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
@@ -114,7 +114,7 @@ impl Hub {
 
 #[handler]
 async fn notifications(depot: &mut Depot, res: &mut Response) {
-    let hub = depot.obtain::<Hub>().unwrap().clone();
+    let hub = depot.get_typed::<Hub>().unwrap().clone();
     let mut rx = hub.tx.subscribe();
 
     let stream = async_stream::stream! {
@@ -152,7 +152,7 @@ struct Chat { tx: broadcast::Sender<String> }
 
 #[handler]
 async fn sse_subscribe(depot: &mut Depot, res: &mut Response) {
-    let chat = depot.obtain::<Chat>().unwrap().clone();
+    let chat = depot.get_typed::<Chat>().unwrap().clone();
     let stream = BroadcastStream::new(chat.tx.subscribe())
         .filter_map(|item| async move {
             item.ok().map(|text| Ok::<_, Infallible>(SseEvent::default().text(text)))
@@ -162,7 +162,7 @@ async fn sse_subscribe(depot: &mut Depot, res: &mut Response) {
 
 #[handler]
 async fn post_message(depot: &mut Depot, req: &mut Request) {
-    let chat = depot.obtain::<Chat>().unwrap().clone();
+    let chat = depot.get_typed::<Chat>().unwrap().clone();
     let body = req.payload().await.map(|b| String::from_utf8_lossy(b).into_owned()).unwrap_or_default();
     let _ = chat.tx.send(body);
 }

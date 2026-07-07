@@ -1,7 +1,7 @@
 ---
 name: salvo-websocket
 description: Implement WebSocket connections for real-time bidirectional communication. Use for chat, live updates, gaming, and collaborative features.
-version: 0.89.3
+version: 0.94.0
 tags: [realtime, websocket, bidirectional, chat]
 ---
 
@@ -13,7 +13,7 @@ tags: [realtime, websocket, bidirectional, chat]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["websocket"] }
+salvo = { version = "0.94.0", features = ["websocket"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
@@ -54,6 +54,7 @@ Client: `new WebSocket('ws://host/ws')` — `<!-- minimal JS client omitted -->`
 WebSocketUpgrade::new()
     .protocols(&["graphql-ws", "graphql-transport-ws"]) // subprotocol allowlist
     .accept_any_protocol()           // OR: echo client's first offered protocol (don't use for auth tokens)
+    .allowed_origins(&["https://app.example.com"]) // reject missing/non-matching Origin with 403
     .max_message_size(1 << 20)       // default 64 MiB
     .max_frame_size(256 * 1024)      // default 16 MiB
     .write_buffer_size(128 * 1024)   // default 128 KiB
@@ -64,6 +65,26 @@ WebSocketUpgrade::new()
 ```
 
 Note: `accept_any_protocol()` takes precedence over `protocols()`.
+
+## Origin checks
+
+Browsers can open cross-site WebSocket connections with ambient cookies, so cookie/session-authenticated WebSocket endpoints should validate `Origin` to prevent Cross-Site WebSocket Hijacking.
+
+```rust
+WebSocketUpgrade::new()
+    .allowed_origins(&["https://app.example.com"])
+    .upgrade(req, res, |ws| async move { /* ... */ })
+    .await
+```
+
+`allowed_origins` rejects requests with a missing `Origin`. If you also support native clients that omit it, use `check_origin` and make that policy explicit:
+
+```rust
+WebSocketUpgrade::new()
+    .check_origin(|origin| origin.is_none() || origin == Some("https://app.example.com"))
+    .upgrade(req, res, |ws| async move { /* ... */ })
+    .await
+```
 
 ## Query params & pre-upgrade state
 
@@ -236,6 +257,7 @@ ws.send(salvo::websocket::Message::text(json)).await.ok();
 - `recv()` returns `None` once the stream ends — always exit the loop.
 - `upgrade()` spawns the callback as a separate task; anything captured must be `Send + 'static`.
 - `Sec-WebSocket-Protocol` is echoed to clients — never put secrets in it.
+- Use `allowed_origins` or `check_origin` for WebSocket endpoints authenticated by cookies or sessions.
 - If the client omits `Sec-WebSocket-Version: 13` or the `Upgrade`/`Connection` headers, `upgrade()` returns `StatusError::bad_request`.
 
 ## Related Skills

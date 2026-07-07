@@ -1,7 +1,7 @@
 ---
 name: salvo-basic-app
 description: Create basic Salvo web applications with handlers, routers, and server setup. Use when starting a new Salvo project or adding basic HTTP endpoints.
-version: 0.89.3
+version: 0.94.0
 tags: [core, getting-started, handler, router]
 ---
 
@@ -9,9 +9,11 @@ tags: [core, getting-started, handler, router]
 
 ## Dependencies
 
+Salvo 0.94 requires Rust 1.94 or newer.
+
 ```toml
 [dependencies]
-salvo = "0.89.3"
+salvo = "0.94.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

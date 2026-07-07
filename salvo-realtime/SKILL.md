@@ -1,7 +1,7 @@
 ---
 name: salvo-realtime
 description: Implement real-time features using WebSocket and Server-Sent Events (SSE). Use for chat applications, live updates, notifications, and bidirectional communication.
-version: 0.89.3
+version: 0.94.0
 tags: [realtime, websocket, sse, overview]
 ---
 

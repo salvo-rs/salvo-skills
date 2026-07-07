@@ -1,7 +1,7 @@
 ---
 name: salvo-routing
 description: Configure Salvo routers with path parameters, nested routes, and filters. Use for complex routing structures and RESTful APIs.
-version: 0.89.3
+version: 0.94.0
 tags: [core, routing, path-params, filters]
 ---
 

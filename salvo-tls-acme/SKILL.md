@@ -1,7 +1,7 @@
 ---
 name: salvo-tls-acme
 description: Configure TLS/HTTPS with automatic certificate management via ACME (Let's Encrypt). Use for production deployments with secure connections.
-version: 0.89.3
+version: 0.94.0
 tags: [security, tls, https, acme, certificate]
 ---
 
@@ -11,7 +11,7 @@ tags: [security, tls, https, acme, certificate]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["rustls"] }
+salvo = { version = "0.94.0", features = ["rustls"] }
 ```
 
 ```rust
@@ -50,7 +50,7 @@ HTTP/2 is enabled automatically with Rustls.
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["acme"] }
+salvo = { version = "0.94.0", features = ["acme"] }
 ```
 
 ACME is an extension trait on `TcpListener` — there is NO `AcmeListener::builder()` constructor. Use `.acme()` on the listener and chain config.
@@ -139,7 +139,7 @@ use salvo::conn::acme::KeyType;
 Use the built-in `ForceHttps` middleware (needs `force-https` feature) instead of writing a custom handler:
 
 ```toml
-salvo = { version = "0.89.3", features = ["rustls", "force-https"] }
+salvo = { version = "0.94.0", features = ["rustls", "force-https"] }
 ```
 
 ```rust
@@ -158,7 +158,7 @@ Server::new(acceptor).serve(service).await;
 ## HTTP/3 (QUIC)
 
 ```toml
-salvo = { version = "0.89.3", features = ["quinn"] }
+salvo = { version = "0.94.0", features = ["quinn"] }
 ```
 
 `QuinnListener` takes a quinn `ServerConfig` (built from `RustlsConfig`) and an address — NOT a `cert_path`/`key_path` builder.

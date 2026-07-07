@@ -1,7 +1,7 @@
 ---
 name: salvo-auth
 description: Implement authentication and authorization using JWT, Basic Auth, or custom schemes. Use for securing API endpoints and user management.
-version: 0.89.3
+version: 0.94.0
 tags: [security, authentication, jwt, basic-auth]
 ---
 
@@ -11,7 +11,7 @@ tags: [security, authentication, jwt, basic-auth]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["jwt-auth"] }
+salvo = { version = "0.94.0", features = ["jwt-auth"] }
 jsonwebtoken = "9"
 serde = { version = "1", features = ["derive"] }
 chrono = "0.4"
@@ -97,7 +97,7 @@ Available finders: `HeaderFinder`, `QueryFinder`, `FormFinder`, `CookieFinder`. 
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["basic-auth"] }
+salvo = { version = "0.94.0", features = ["basic-auth"] }
 ```
 
 ```rust

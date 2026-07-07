@@ -1,7 +1,7 @@
 ---
 name: salvo-data-extraction
 description: Extract and validate data from requests including JSON, forms, query parameters, and path parameters. Use for handling user input and API payloads.
-version: 0.89.3
+version: 0.94.0
 tags: [data, extraction, json, form, query]
 ---
 
@@ -148,7 +148,7 @@ let router = Router::new()
     .push(Router::with_path("protected").get(protected));
 ```
 
-Depot-extraction supports: `String`, `&'static str`, all signed/unsigned integer primitives, `f32`, `f64`, `bool`. For richer types, fetch manually with `depot.obtain::<T>()`.
+Depot-extraction supports: `String`, `&'static str`, all signed/unsigned integer primitives, `f32`, `f64`, `bool`. For richer types, fetch manually with `depot.get_typed::<T>()`.
 
 Combining depot with other sources:
 

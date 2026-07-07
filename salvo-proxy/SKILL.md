@@ -1,7 +1,7 @@
 ---
 name: salvo-proxy
 description: Implement reverse proxy to forward requests to backend services. Use for load balancing, API gateways, and microservices routing.
-version: 0.89.3
+version: 0.94.0
 tags: [advanced, proxy, reverse-proxy, gateway]
 ---
 
@@ -9,7 +9,7 @@ tags: [advanced, proxy, reverse-proxy, gateway]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["proxy"] }
+salvo = { version = "0.94.0", features = ["proxy"] }
 ```
 
 The `proxy` feature enables the `hyper-client` subfeature by default. For
@@ -33,6 +33,11 @@ let router = Router::new().push(Router::with_path("{**rest}").goal(proxy));
 
 Shortcut: `Proxy::use_hyper_client(upstreams)` is equivalent to
 `Proxy::new(upstreams, HyperClient::default())`.
+
+By default, `Proxy` uses `standard_host_header_getter`, so the forwarded `Host`
+header includes a non-default upstream port, e.g. `backend:3000`. If an upstream
+requires the old bare-host behavior, configure `default_host_header_getter`
+explicitly.
 
 ### ReqwestClient
 
@@ -129,15 +134,21 @@ async fn add_proxy_headers(req: &mut Request, depot: &mut Depot, res: &mut Respo
 ## Customising URL/host rewriting
 
 ```rust
+use salvo::proxy::default_host_header_getter;
+
 let proxy = Proxy::new(vec!["http://backend:3000"], HyperClient::default())
     .url_path_getter(|req, _depot| {
         // Strip "/api" prefix before forwarding
         req.uri().path().strip_prefix("/api").map(String::from)
     })
-    .host_header_getter(|uri, _req, _depot| uri.host().map(String::from));
+    .host_header_getter(default_host_header_getter);
 ```
 
 `url_query_getter` is also available for query rewriting.
+
+Security defaults:
+- `strict_path_normalization(true)` is enabled by default and rejects ambiguous encoded path traversal before proxying.
+- `strip_authorization_header(false)` is the default. Set `.strip_authorization_header(true)` when inbound credentials must not reach the upstream.
 
 ## Rate limiting
 

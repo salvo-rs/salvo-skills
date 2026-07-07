@@ -1,27 +1,27 @@
 ---
 name: salvo-database
 description: Integrate databases with Salvo using SQLx, Diesel, SeaORM, or other ORMs. Use for persistent data storage and database operations.
-version: 0.89.3
+version: 0.94.0
 tags: [data, database, sqlx, seaorm, diesel]
 ---
 
 # Salvo Database Integration
 
-Share a pool via `affix_state::inject(pool)` and pull it out with `depot.obtain::<T>()`.
+Share a pool via `affix_state::inject(pool)` and pull it out with `depot.get_typed::<T>()`.
 
-`depot.obtain::<T>()` returns `Result<&T, _>` (NOT `Option`). Convert to a Salvo error with `.map_err(|_| StatusError::internal_server_error())` or propagate with `?` after conversion.
+`depot.get_typed::<T>()` returns `Result<&T, _>` (NOT `Option`). Convert to a Salvo error with `.map_err(|_| StatusError::internal_server_error())` or propagate with `?` after conversion.
 
 Requires the `affix-state` feature on `salvo`:
 
 ```toml
-salvo = { version = "0.89.3", features = ["affix-state"] }
+salvo = { version = "0.94.0", features = ["affix-state"] }
 ```
 
 ## SQLx
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["affix-state"] }
+salvo = { version = "0.94.0", features = ["affix-state"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }
@@ -41,7 +41,7 @@ struct CreateUser { name: String, email: String }
 
 #[handler]
 async fn list_users(depot: &mut Depot) -> Result<Json<Vec<User>>, StatusError> {
-    let pool = depot.obtain::<PgPool>()
+    let pool = depot.get_typed::<PgPool>()
         .map_err(|_| StatusError::internal_server_error())?;
     let users = sqlx::query_as::<_, User>("SELECT id, name, email FROM users")
         .fetch_all(pool)
@@ -55,7 +55,7 @@ async fn create_user(
     body: JsonBody<CreateUser>,
     depot: &mut Depot,
 ) -> Result<StatusCode, StatusError> {
-    let pool = depot.obtain::<PgPool>()
+    let pool = depot.get_typed::<PgPool>()
         .map_err(|_| StatusError::internal_server_error())?;
     let user = body.into_inner();
     sqlx::query("INSERT INTO users (name, email) VALUES ($1, $2)")
@@ -69,7 +69,7 @@ async fn create_user(
 
 #[handler]
 async fn get_user(req: &mut Request, depot: &mut Depot) -> Result<Json<User>, StatusError> {
-    let pool = depot.obtain::<PgPool>()
+    let pool = depot.get_typed::<PgPool>()
         .map_err(|_| StatusError::internal_server_error())?;
     let id = req.param::<i64>("id")
         .ok_or_else(StatusError::bad_request)?;
@@ -111,7 +111,7 @@ async fn transfer(
     body: JsonBody<Transfer>,
     depot: &mut Depot,
 ) -> Result<StatusCode, StatusError> {
-    let pool = depot.obtain::<PgPool>()
+    let pool = depot.get_typed::<PgPool>()
         .map_err(|_| StatusError::internal_server_error())?;
     let t = body.into_inner();
 
@@ -161,7 +161,7 @@ async fn main() {
 
 #[handler]
 async fn list_users(depot: &mut Depot) -> Result<Json<Vec<user::Model>>, StatusError> {
-    let db = depot.obtain::<DatabaseConnection>()
+    let db = depot.get_typed::<DatabaseConnection>()
         .map_err(|_| StatusError::internal_server_error())?;
     let users = user::Entity::find().all(db).await
         .map_err(|_| StatusError::internal_server_error())?;
@@ -173,7 +173,7 @@ async fn show_user(
     req: &mut Request,
     depot: &mut Depot,
 ) -> Result<Json<user::Model>, StatusError> {
-    let db = depot.obtain::<DatabaseConnection>()
+    let db = depot.get_typed::<DatabaseConnection>()
         .map_err(|_| StatusError::internal_server_error())?;
     let id = req.param::<i64>("id").ok_or_else(StatusError::bad_request)?;
     let user = user::Entity::find_by_id(id).one(db).await
@@ -187,7 +187,7 @@ async fn create_user(
     body: JsonBody<CreateUser>,
     depot: &mut Depot,
 ) -> Result<StatusCode, StatusError> {
-    let db = depot.obtain::<DatabaseConnection>()
+    let db = depot.get_typed::<DatabaseConnection>()
         .map_err(|_| StatusError::internal_server_error())?;
     let data = body.into_inner();
     let m = user::ActiveModel {
@@ -232,7 +232,7 @@ async fn main() {
 
 #[handler]
 async fn list_users(depot: &mut Depot) -> Result<Json<Vec<User>>, StatusError> {
-    let pool = depot.obtain::<DbPool>()
+    let pool = depot.get_typed::<DbPool>()
         .map_err(|_| StatusError::internal_server_error())?
         .clone();
 
@@ -252,7 +252,7 @@ async fn list_users(depot: &mut Depot) -> Result<Json<Vec<User>>, StatusError> {
 ## Salvo-Specific Notes
 
 - Inject the pool, not a connection — pools are `Clone` and share cheaply across requests.
-- `depot.obtain::<T>()` returns `Result<&T, _>`; use `.map_err(...)`, not `.ok_or_else(...)`.
+- `depot.get_typed::<T>()` returns `Result<&T, _>`; use `.map_err(...)`, not `.ok_or_else(...)`.
 - For Diesel (sync), always wrap queries in `spawn_blocking` to avoid blocking the tokio runtime.
 - `affix_state::inject()` requires the `affix-state` feature on `salvo`.
 

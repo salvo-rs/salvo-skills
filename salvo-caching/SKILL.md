@@ -1,7 +1,7 @@
 ---
 name: salvo-caching
 description: Implement caching strategies for improved performance. Use for reducing database load and speeding up responses.
-version: 0.89.3
+version: 0.94.0
 tags: [performance, caching, cache-control, etag]
 ---
 
@@ -9,7 +9,7 @@ tags: [performance, caching, cache-control, etag]
 
 ```toml
 [dependencies]
-salvo = { version = "0.89.3", features = ["cache", "caching-headers"] }
+salvo = { version = "0.94.0", features = ["cache", "caching-headers"] }
 ```
 
 The `cache` feature activates `salvo-cache` with the default `moka-store` backend.
@@ -146,8 +146,8 @@ type UserCache = Arc<MokaCache<i64, User>>;
 #[handler]
 async fn get_user(req: &mut Request, depot: &mut Depot) -> Result<Json<User>, StatusError> {
     let id = req.param::<i64>("id").ok_or_else(StatusError::bad_request)?;
-    let cache = depot.obtain::<UserCache>().unwrap();
-    let pool = depot.obtain::<PgPool>().unwrap();
+    let cache = depot.get_typed::<UserCache>().unwrap();
+    let pool = depot.get_typed::<PgPool>().unwrap();
 
     if let Some(user) = cache.get(&id).await { return Ok(Json(user)); }
 
@@ -182,7 +182,7 @@ Invalidate on write:
 async fn update_user(req: &mut Request, depot: &mut Depot) -> StatusCode {
     let id = req.param::<i64>("id").unwrap();
     // update db...
-    depot.obtain::<UserCache>().unwrap().invalidate(&id).await;
+    depot.get_typed::<UserCache>().unwrap().invalidate(&id).await;
     StatusCode::OK
 }
 ```
