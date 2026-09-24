@@ -1,7 +1,7 @@
 ---
 name: salvo-error-handling
 description: Handle errors gracefully with custom error types, status codes, and error pages. Use for building robust APIs with proper error responses.
-version: 0.94.0
+version: 1.0.0
 tags: [core, error-handling, status-code]
 ---
 
@@ -34,7 +34,7 @@ Chainable setters: `.brief(...)`, `.detail(...)`, `.cause(err)`. Note: no `not_m
 Enable the feature, then return `anyhow::Error` / `eyre::Report` directly:
 
 ```toml
-salvo = { version = "0.94.0", features = ["anyhow", "eyre"] }
+salvo = { version = "1.0.0", features = ["anyhow", "eyre"] }
 ```
 
 ```rust

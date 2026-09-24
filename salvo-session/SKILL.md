@@ -1,7 +1,7 @@
 ---
 name: salvo-session
 description: Implement session management for user state persistence. Use for login systems, shopping carts, and user preferences.
-version: 0.94.0
+version: 1.0.0
 tags: [security, session, cookie, login]
 ---
 
@@ -9,7 +9,7 @@ tags: [security, session, cookie, login]
 
 ```toml
 [dependencies]
-salvo = { version = "0.94.0", features = ["session"] }
+salvo = { version = "1.0.0", features = ["session"] }
 ```
 
 ## Basic Setup

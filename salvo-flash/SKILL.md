@@ -1,7 +1,7 @@
 ---
 name: salvo-flash
 description: Implement flash messages for one-time notifications across redirects. Use for success/error messages after form submissions.
-version: 0.94.0
+version: 1.0.0
 tags: [advanced, flash-messages, notifications]
 ---
 
@@ -9,7 +9,7 @@ tags: [advanced, flash-messages, notifications]
 
 ```toml
 [dependencies]
-salvo = { version = "0.94.0", features = ["flash"] }
+salvo = { version = "1.0.0", features = ["flash"] }
 ```
 
 `FlashHandler` middleware stores messages between requests. The set

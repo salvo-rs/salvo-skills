@@ -129,7 +129,7 @@ The AI will use these skills to provide accurate, framework-specific guidance.
 ## Key Concepts Covered
 
 ### Handlers and Routing
-- Rust 1.94 or newer for Salvo 0.94
+- Rust 1.94 or newer for Salvo 1.0
 - `#[handler]` macro for request handlers
 - Path parameters with `{id}` syntax
 - Nested routers with `push()`

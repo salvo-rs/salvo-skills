@@ -1,7 +1,7 @@
 ---
 name: salvo-graceful-shutdown
 description: Implement graceful server shutdown to handle in-flight requests before stopping. Use for zero-downtime deployments and proper resource cleanup.
-version: 0.94.0
+version: 1.0.0
 tags: [operations, shutdown, deployment]
 ---
 
@@ -9,11 +9,11 @@ tags: [operations, shutdown, deployment]
 
 Graceful shutdown lives in `salvo-core` behind the `server-handle` feature,
 which is on by default when you enable `server`. No extra feature flag needed
-for the default `salvo = "0.94.0"` dependency.
+for the default `salvo = "1.0.0"` dependency.
 
 ```toml
 [dependencies]
-salvo = "0.94.0"
+salvo = "1.0.0"
 tokio = { version = "1", features = ["full"] }
 ```
 

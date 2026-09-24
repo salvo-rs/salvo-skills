@@ -1,7 +1,7 @@
 ---
 name: salvo-static-files
 description: Serve static files, directories, and embedded assets. Use for CSS, JavaScript, images, and downloadable content.
-version: 0.94.0
+version: 1.0.0
 tags: [data, static-files, assets, serve-static]
 ---
 
@@ -11,7 +11,7 @@ tags: [data, static-files, assets, serve-static]
 
 ```toml
 [dependencies]
-salvo = { version = "0.94.0", features = ["serve-static"] }
+salvo = { version = "1.0.0", features = ["serve-static"] }
 rust-embed = "8"   # only for embedded assets
 ```
 
@@ -28,6 +28,14 @@ Catch-all path segment uses `{*path}` (greedy, single segment required) or `{**p
 - `exclude(fn)` — filter predicate
 - `chunk_size(u64)` — streaming chunk size
 - `compressed_variation(algo, exts)` — serve pre-compressed variants
+- `disposition_type(value)` — override the default `Content-Disposition` type
+- `use_content_type_options(bool)` — control the `X-Content-Type-Options: nosniff` header
+
+In Salvo 1.0, SVG and other XML-based files default to `Content-Disposition: attachment`
+when served by `StaticDir`, `StaticFile`, or `NamedFile`. This prevents uploaded XML
+from executing in the site's origin when opened directly. For a directory of trusted
+assets that must open inline, use `.disposition_type("inline")`. Responses include
+`X-Content-Type-Options: nosniff` by default.
 
 Note: `StaticDir` does NOT expose a `cache_control()` builder. For cache headers, add a middleware that sets them on the response.
 

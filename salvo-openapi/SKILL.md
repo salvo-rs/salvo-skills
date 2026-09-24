@@ -1,7 +1,7 @@
 ---
 name: salvo-openapi
 description: Generate OpenAPI documentation automatically from Salvo handlers. Use for API documentation, Swagger UI, and API client generation.
-version: 0.94.0
+version: 1.0.0
 tags: [advanced, openapi, swagger, documentation]
 ---
 
@@ -9,7 +9,7 @@ tags: [advanced, openapi, swagger, documentation]
 
 ```toml
 [dependencies]
-salvo = { version = "0.94.0", features = ["oapi"] }
+salvo = { version = "1.0.0", features = ["oapi"] }
 serde = { version = "1", features = ["derive"] }
 ```
 
@@ -178,9 +178,14 @@ async fn get_user(id: PathParam<i64>) -> Result<Json<User>, StatusError> {
 
 ## OpenApi metadata
 
-Salvo 0.94 emits OpenAPI 3.1 `jsonSchemaDialect` for the top-level schema
+Salvo 1.0 emits OpenAPI 3.1 `jsonSchemaDialect` for the top-level schema
 dialect. Routes without an HTTP method filter are skipped during OpenAPI
 generation instead of being expanded to every method.
+
+OpenAPI 3.2 output is opt-in with `OpenApi::openapi_version`. In a 3.2 document,
+route discovery can include `QUERY` and other custom HTTP methods; 3.1 documents
+skip those routes. Keep the document version at 3.1 for clients that do not yet
+support 3.2 operations.
 
 `OpenApi` itself only exposes `info()`, `servers()`, `security()`,
 `add_security_scheme()`, `tags()`, and `merge_router()`. There is **no**
