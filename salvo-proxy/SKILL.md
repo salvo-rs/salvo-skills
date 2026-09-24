@@ -1,7 +1,7 @@
 ---
 name: salvo-proxy
 description: Implement reverse proxy to forward requests to backend services. Use for load balancing, API gateways, and microservices routing.
-version: 0.94.0
+version: 1.0.0
 tags: [advanced, proxy, reverse-proxy, gateway]
 ---
 
@@ -9,7 +9,7 @@ tags: [advanced, proxy, reverse-proxy, gateway]
 
 ```toml
 [dependencies]
-salvo = { version = "0.94.0", features = ["proxy"] }
+salvo = { version = "1.0.0", features = ["proxy"] }
 ```
 
 The `proxy` feature enables the `hyper-client` subfeature by default. For

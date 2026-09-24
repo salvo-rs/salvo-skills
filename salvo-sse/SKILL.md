@@ -1,7 +1,7 @@
 ---
 name: salvo-sse
 description: Implement Server-Sent Events for real-time server-to-client updates. Use for live feeds, notifications, and streaming data.
-version: 0.94.0
+version: 1.0.0
 tags: [realtime, sse, server-sent-events, streaming]
 ---
 
@@ -13,7 +13,7 @@ tags: [realtime, sse, server-sent-events, streaming]
 
 ```toml
 [dependencies]
-salvo = { version = "0.94.0", features = ["sse"] }
+salvo = { version = "1.0.0", features = ["sse"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"

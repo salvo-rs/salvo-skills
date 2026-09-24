@@ -1,7 +1,7 @@
 ---
 name: salvo-caching
 description: Implement caching strategies for improved performance. Use for reducing database load and speeding up responses.
-version: 0.94.0
+version: 1.0.0
 tags: [performance, caching, cache-control, etag]
 ---
 
@@ -9,7 +9,7 @@ tags: [performance, caching, cache-control, etag]
 
 ```toml
 [dependencies]
-salvo = { version = "0.94.0", features = ["cache", "caching-headers"] }
+salvo = { version = "1.0.0", features = ["cache", "caching-headers"] }
 ```
 
 The `cache` feature activates `salvo-cache` with the default `moka-store` backend.

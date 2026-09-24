@@ -1,7 +1,7 @@
 ---
 name: salvo-database
 description: Integrate databases with Salvo using SQLx, Diesel, SeaORM, or other ORMs. Use for persistent data storage and database operations.
-version: 0.94.0
+version: 1.0.0
 tags: [data, database, sqlx, seaorm, diesel]
 ---
 
@@ -14,14 +14,14 @@ Share a pool via `affix_state::inject(pool)` and pull it out with `depot.get_typ
 Requires the `affix-state` feature on `salvo`:
 
 ```toml
-salvo = { version = "0.94.0", features = ["affix-state"] }
+salvo = { version = "1.0.0", features = ["affix-state"] }
 ```
 
 ## SQLx
 
 ```toml
 [dependencies]
-salvo = { version = "0.94.0", features = ["affix-state"] }
+salvo = { version = "1.0.0", features = ["affix-state"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }

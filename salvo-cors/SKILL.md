@@ -1,7 +1,7 @@
 ---
 name: salvo-cors
 description: Configure Cross-Origin Resource Sharing (CORS) and security headers. Use for APIs accessed from browsers on different domains.
-version: 0.94.0
+version: 1.0.0
 tags: [security, cors, cross-origin, headers]
 ---
 
@@ -9,7 +9,7 @@ tags: [security, cors, cross-origin, headers]
 
 ```toml
 [dependencies]
-salvo = { version = "0.94.0", features = ["cors"] }
+salvo = { version = "1.0.0", features = ["cors"] }
 ```
 
 `Cors` is a builder; terminate with `.into_handler()` to get a `CorsHandler` you can `hoop` onto a router.

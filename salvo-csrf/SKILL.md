@@ -1,7 +1,7 @@
 ---
 name: salvo-csrf
 description: Implement CSRF (Cross-Site Request Forgery) protection using cookie or session storage. Use for protecting forms and state-changing endpoints.
-version: 0.94.0
+version: 1.0.0
 tags: [security, csrf, protection]
 ---
 
@@ -9,7 +9,7 @@ tags: [security, csrf, protection]
 
 ```toml
 [dependencies]
-salvo = { version = "0.94.0", features = ["csrf"] }
+salvo = { version = "1.0.0", features = ["csrf"] }
 ```
 
 ## Ciphers

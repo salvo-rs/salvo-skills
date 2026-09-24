@@ -1,7 +1,7 @@
 ---
 name: salvo-data-extraction
 description: Extract and validate data from requests including JSON, forms, query parameters, and path parameters. Use for handling user input and API payloads.
-version: 0.94.0
+version: 1.0.0
 tags: [data, extraction, json, form, query]
 ---
 

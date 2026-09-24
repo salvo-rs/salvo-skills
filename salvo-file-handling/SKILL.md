@@ -1,7 +1,7 @@
 ---
 name: salvo-file-handling
 description: Handle file uploads (single/multiple), downloads, and multipart forms. Use for file management, image uploads, and content delivery.
-version: 0.94.0
+version: 1.0.0
 tags: [data, file-upload, multipart, download]
 ---
 
@@ -11,7 +11,7 @@ tags: [data, file-upload, multipart, download]
 
 ```toml
 [dependencies]
-salvo = { version = "0.94.0", features = ["size-limiter"] }
+salvo = { version = "1.0.0", features = ["size-limiter"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
 ```
 
